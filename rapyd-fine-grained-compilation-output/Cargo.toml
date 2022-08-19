@@ -16,3 +16,5 @@ web-sys = { version = "0.3.59", features = [
     "console"
 ] }
 const_format = "0.2.26"
+arrayvec = "0.7.2"
+

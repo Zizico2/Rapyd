@@ -1,11 +1,15 @@
-use std::{borrow::BorrowMut, cell::RefCell, rc::Rc};
+use std::{array, borrow::BorrowMut, cell::RefCell, rc::Rc, slice};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
+use web_sys::console;
 
 use crate::Walk;
 
-pub type TextNodes = [web_sys::Text; 1];
-pub type EventTargets = [web_sys::EventTarget; 1];
+pub const N_TEXT_NODES: usize = 1;
+pub const N_EVENT_TARGETS: usize = 1;
+
+pub type TextNodes = [web_sys::Text; N_TEXT_NODES];
+pub type EventTargets = [web_sys::EventTarget; N_EVENT_TARGETS];
 
 pub mod state {
     pub type Count = u32;
@@ -26,7 +30,23 @@ mod inner {
 
 pub type Scope = Rc<inner::Scope>;
 
-pub fn new_scope(text_nodes: TextNodes, event_targets: EventTargets) -> Scope {
+pub fn new_scope<'a>(
+    text_nodes: &mut slice::IterMut<'a, web_sys::Text>,
+    event_targets: &mut slice::IterMut<'a, web_sys::EventTarget>,
+) -> Scope {
+    let text_nodes = array::from_fn(|_| {
+        text_nodes
+            .next()
+            .expect("Too few TextNodes for counter")
+            .clone()
+    });
+    let event_targets = array::from_fn(|_| {
+        event_targets
+            .next()
+            .expect("Too few TextNodes for counter")
+            .clone()
+    });
+
     inner::Scope::new(text_nodes, event_targets)
 }
 
@@ -55,7 +75,7 @@ fn handle_click(scope: Scope) {
     apply_count(scope, new_count);
 }
 
-impl inner::Scope {
+impl<'a> inner::Scope {
     fn setup(mut scope: Scope) {
         let handle_click = {
             let scope = scope.clone();
@@ -82,14 +102,14 @@ impl inner::Scope {
     }
 }
 
-#[derive(Default)]
-pub struct NewScopeOptions {
-    pub text_nodes: OptionalTextNodes,
-    pub event_targets: OptionalEventTargets,
+//#[derive(Default)]
+pub struct NewScopeOptions<'a> {
+    pub text_nodes: slice::Iter<'a, web_sys::Text>,
+    pub event_targets: slice::Iter<'a, web_sys::EventTarget>,
 }
 
-pub type OptionalTextNodes = [Option<web_sys::Text>; 1];
-pub type OptionalEventTargets = [Option<web_sys::EventTarget>; 1];
+//pub type OptionalTextNodes = ArrayVec<Option<web_sys::Text>, 1>;
+//pub type OptionalEventTargets = ArrayVec<Option<web_sys::EventTarget>, 1>;
 
 #[derive(Clone, Copy)]
 pub struct State {

@@ -1,6 +1,7 @@
 use std::slice;
 
 use crate::counter;
+use arrayvec::ArrayVec;
 use const_format::formatcp;
 use web_sys::{console, Element, EventTarget, Node, Text};
 
@@ -56,55 +57,62 @@ pub type Walks = [Walk; 4];
 
 pub const WALKS: Walks = [
     Walk::Next(1),
-    Walk::MoreWalks(&counter::WALKS),
-    Walk::MoreWalks(&counter::WALKS),
+    Walk::ChildWalks(&counter::WALKS),
+    Walk::ChildWalks(&counter::WALKS),
     Walk::Out(1),
 ];
 
+pub const N_TEXT_NODES: usize = 0;
+pub const N_EVENT_TARGETS: usize = 0;
+
 pub fn mount(anchor: Element) {
     anchor.set_inner_html(TEMPLATE);
-    let _scope = walk_through(
-        anchor.first_child().unwrap(),
-        [Some(WALKS.iter()), None, None],
-    );
-    std::mem::forget(_scope);
+    let mut array = ArrayVec::<slice::Iter<Walk>, 3>::new_const();
+
+    array.push(WALKS.iter());
+    const AUX_N_TEXT_NODES: usize = counter::N_TEXT_NODES + counter::N_TEXT_NODES + N_TEXT_NODES;
+    const AUX_N_EVENT_TARGETS: usize =
+        counter::N_EVENT_TARGETS + counter::N_EVENT_TARGETS + N_EVENT_TARGETS;
+    let (mut text_nodes, mut event_targets) = walk_through::<
+        3,
+        AUX_N_TEXT_NODES,
+        AUX_N_EVENT_TARGETS,
+    >(anchor.first_child().unwrap(), array);
+
+    let mut text_nodes = text_nodes.iter_mut();
+    let mut event_targets = event_targets.iter_mut();
+    let scope = Scope {
+        child_scopes: ChildScopes(
+            counter::new_scope(&mut text_nodes, &mut event_targets),
+            counter::new_scope(&mut text_nodes, &mut event_targets),
+        ),
+    };
+    std::mem::forget(scope);
 }
 
-fn walk_through<const N: usize>(node: Node, walks: [Option<slice::Iter<Walk>>; N]) -> Scope {
-    let mut index = 0;
-    let mut walks_matrix: [Option<slice::Iter<Walk>>; N] = walks;
+fn walk_through<const N_WALKS: usize, const N_TEXT_NODES: usize, const N_EVENT_TARGETS: usize>(
+    node: Node,
+    walks: ArrayVec<slice::Iter<Walk>, N_WALKS>,
+) -> (
+    ArrayVec<web_sys::Text, N_TEXT_NODES>,
+    ArrayVec<web_sys::EventTarget, N_EVENT_TARGETS>,
+) {
+    let mut text_nodes = ArrayVec::<web_sys::Text, N_TEXT_NODES>::new_const();
+    let mut event_targets = ArrayVec::<web_sys::EventTarget, N_EVENT_TARGETS>::new_const();
+
+    let mut walks_matrix = walks;
 
     let mut current_node = node;
 
     let mut more_walks = None;
 
-    let mut child_new_scope_options = (
-        counter::NewScopeOptions::default(),
-        counter::NewScopeOptions::default(),
-    );
-
-    let mut scope_counter: u32 = 0;
-
-    let mut map_new_scope = |val: NewScopeValue| {
-        match scope_counter {
-            0 => child_new_scope_options.0.event_targets[0] = Some(val.try_into().unwrap()),
-            1 => child_new_scope_options.0.text_nodes[0] = Some(val.try_into().unwrap()),
-            2 => child_new_scope_options.1.event_targets[0] = Some(val.try_into().unwrap()),
-            3 => child_new_scope_options.1.text_nodes[0] = Some(val.try_into().unwrap()),
-            _ => panic!(),
-        };
-        scope_counter += 1;
-    };
-
     loop {
         let walks = {
             let mut outter_walks = None;
-            for walks in walks_matrix.iter_mut().rev() {
-                if let Some(walks) = walks {
-                    if walks.len() != 0 {
-                        outter_walks = Some(walks);
-                        break;
-                    }
+            for walks in walks_matrix.as_mut_slice().iter_mut().rev() {
+                if walks.len() != 0 {
+                    outter_walks = Some(walks);
+                    break;
                 }
             }
             match outter_walks {
@@ -116,6 +124,7 @@ fn walk_through<const N: usize>(node: Node, walks: [Option<slice::Iter<Walk>>; N
         for walk in walks {
             match walk {
                 Walk::Next(n) => {
+                    console::log_1(&"Next".into());
                     for _ in 0..n - 1 {
                         current_node.first_child().expect("No more child nodes!");
                     }
@@ -123,6 +132,7 @@ fn walk_through<const N: usize>(node: Node, walks: [Option<slice::Iter<Walk>>; N
                     current_node = current_node.first_child().expect("No more child nodes!");
                 }
                 Walk::Over(n) => {
+                    console::log_1(&"Over".into());
                     for _ in 0..n - 1 {
                         current_node
                             .next_sibling()
@@ -134,6 +144,7 @@ fn walk_through<const N: usize>(node: Node, walks: [Option<slice::Iter<Walk>>; N
                         .expect("No more next_sibling nodes!");
                 }
                 Walk::Out(n) => {
+                    console::log_1(&"Out".into());
                     for _ in 0..n - 1 {
                         current_node.parent_node().expect("No more parent nodes!");
                     }
@@ -149,6 +160,7 @@ fn walk_through<const N: usize>(node: Node, walks: [Option<slice::Iter<Walk>>; N
                     }
                 }
                 Walk::Replace => {
+                    console::log_1(&"Replace".into());
                     let new_text_node = Text::new().unwrap();
                     current_node
                         // could be optimized, so parent_node isn't queried every time. Could cache it locally.
@@ -159,49 +171,28 @@ fn walk_through<const N: usize>(node: Node, walks: [Option<slice::Iter<Walk>>; N
                         .replace_child(&new_text_node, &current_node)
                         .unwrap();
 
-                    map_new_scope(new_text_node.clone().into());
+                    //map_new_scope(new_text_node.clone().into());
+                    text_nodes.push(new_text_node.clone().into());
 
                     current_node = new_text_node.into();
                 }
                 Walk::EventTarget => {
+                    console::log_1(&"EventTarget".into());
                     let et: EventTarget = current_node.clone().into();
-                    map_new_scope(et.into());
+                    event_targets.push(et.into());
+                    //map_new_scope(et.into());
                 }
-                Walk::MoreWalks(walks) => {
+                Walk::ChildWalks(walks) => {
                     more_walks = Some(walks.iter());
                     break;
                 }
             }
         }
-        if more_walks.is_some() {
-            index += 1;
-            walks_matrix[index] = more_walks;
+        if let Some(inner_more_walks) = more_walks {
+            walks_matrix.push(inner_more_walks);
             more_walks = None;
         }
     }
 
-    let child_scopes = ChildScopes(
-        counter::new_scope(
-            child_new_scope_options
-                .0
-                .text_nodes
-                .map(|elem| elem.expect("Missing text node!")),
-            child_new_scope_options
-                .0
-                .event_targets
-                .map(|elem| elem.expect("Missing event target!")),
-        ),
-        counter::new_scope(
-            child_new_scope_options
-                .1
-                .text_nodes
-                .map(|elem| elem.expect("Missing text node!")),
-            child_new_scope_options
-                .1
-                .event_targets
-                .map(|elem| elem.expect("Missing event target!")),
-        ),
-    );
-
-    Scope { child_scopes }
+    (text_nodes, event_targets)
 }

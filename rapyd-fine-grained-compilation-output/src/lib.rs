@@ -19,7 +19,7 @@ pub enum Walk {
     EventTarget,
     // an array of walks. This Variant will be used inside other arrays of walks,
     // creating a tree-like structure. These trees are meant to be read as if they were flat.
-    MoreWalks(&'static [Walk]),
+    ChildWalks(&'static [Walk]),
 }
 
 mod counter;
