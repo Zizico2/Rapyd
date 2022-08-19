@@ -1,0 +1,8 @@
+[workspace]
+members = [
+    "rapyd",
+    "rapyd-macros",
+    "rapyd-playground",
+    "rapyd-web-playground",
+    "rapyd-fine-grained-compilation-output"
+]

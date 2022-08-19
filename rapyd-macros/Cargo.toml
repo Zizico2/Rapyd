@@ -1,0 +1,15 @@
+[package]
+name = "rapyd-macros"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+syn-rsx = "0.8.1"
+syn = { version = "1.0.98", features = ["full"] }
+quote = "1.0.20"
+proc-macro2 = "1.0.40"
+const_format = "0.2.26"
+# handlebars = "4.3.2"
