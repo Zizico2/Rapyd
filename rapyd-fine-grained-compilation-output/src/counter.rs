@@ -1,9 +1,19 @@
-use std::{array, borrow::BorrowMut, cell::RefCell, rc::Rc, slice};
+use std::{
+    array,
+    borrow::BorrowMut,
+    cell::{RefCell, RefMut},
+    ops::Deref,
+    rc::Rc,
+};
+use std::{mem, ptr::NonNull};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::console;
 
-use crate::Walk;
+use crate::{
+    scope::{ScopeState, StateTag, UpdateState},
+    Walk,
+};
 
 pub const N_TEXT_NODES: usize = 1;
 pub const N_EVENT_TARGETS: usize = 1;
@@ -11,115 +21,120 @@ pub const N_EVENT_TARGETS: usize = 1;
 pub type TextNodes = [web_sys::Text; N_TEXT_NODES];
 pub type EventTargets = [web_sys::EventTarget; N_EVENT_TARGETS];
 
-pub mod state {
-    pub type Count = u32;
-}
+// STATE -----------------------------------------------------------
 
-mod inner {
-    use std::cell::RefCell;
+/* STATE */
 
-    use super::{EventTargets, Props, State, TextNodes};
+pub struct State0(u32);
 
-    pub struct Scope {
-        pub props: Props,
-        pub state: RefCell<State>,
-        pub text_nodes: TextNodes,
-        pub event_targets: EventTargets,
+impl State0 {
+    fn new(val: u32) -> Self {
+        State0(val)
     }
 }
 
-pub type Scope = Rc<inner::Scope>;
+impl StateTag<u32> for State0 {}
 
-pub fn new_scope<'a>(
-    text_nodes: &mut slice::IterMut<'a, web_sys::Text>,
-    event_targets: &mut slice::IterMut<'a, web_sys::EventTarget>,
-) -> Scope {
-    let text_nodes = array::from_fn(|_| {
+impl From<State0> for u32 {
+    fn from(state: State0) -> Self {
+        state.0
+    }
+}
+
+impl Deref for State0 {
+    type Target = u32;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl UpdateState<State0, u32> for Scope {
+    fn update_state(&self, new: &u32) {
+        self.text_nodes[0].set_data(&new.to_string())
+    }
+}
+
+/*------------------------------------*/
+
+// ------------------------------------------------------------------
+/*
+pub mod state {
+    pub type Var0 = u32;
+}
+ */
+pub struct Props;
+
+pub struct Scope {
+    pub props: Props,
+    pub text_nodes: TextNodes,
+    pub event_targets: EventTargets,
+}
+pub fn new_scope<
+    'a,
+    T: Iterator<Item = &'a web_sys::Text>,
+    E: Iterator<Item = &'a web_sys::EventTarget>,
+>(
+    props: [(); 0],
+    mut text_nodes: T,
+    mut event_targets: E,
+) -> (Rc<Scope>, Rc<RefCell<State>>) {
+    let text_nodes: TextNodes = array::from_fn(|_| {
+        console::log_1(&"text_next".into());
         text_nodes
             .next()
             .expect("Too few TextNodes for counter")
             .clone()
     });
-    let event_targets = array::from_fn(|_| {
+    let event_targets: EventTargets = array::from_fn(|_| {
+        console::log_1(&"event_next".into());
         event_targets
             .next()
             .expect("Too few TextNodes for counter")
             .clone()
     });
-
-    inner::Scope::new(text_nodes, event_targets)
+    Scope::new(props, text_nodes, event_targets)
 }
 
-fn apply_count(scope: Scope, count: state::Count) {
-    let mut state = scope.state.borrow_mut();
-    if state.count != count {
-        state.count = count;
-        std::mem::drop(state);
-        update_count(scope);
-    }
-}
-pub struct Props;
-
-// update every node dependant on count
-// this shouldn't be RefMut. This could very wel be a Ref
-//TODO Think about this
-fn update_count(scope: Scope) {
-    let state = scope.state.borrow();
-    scope.text_nodes[0].set_data(&state.count.to_string());
+fn handle_click(state: Rc<RefCell<State>>) {
+    let mut state = state.deref().borrow_mut();
+    let mut state = state.state_0.borrow_mut();
+    *state += 1;
 }
 
-fn handle_click(scope: Scope) {
-    let state = scope.state.borrow_mut();
-    let new_count = state.count + 1;
-    std::mem::drop(state);
-    apply_count(scope, new_count);
-}
+impl Scope {
+    fn setup(mut state: Rc<RefCell<State>>, scope: Rc<Scope>) {
+        std::mem::drop(state.deref().borrow_mut().state_0.borrow_mut());
 
-impl<'a> inner::Scope {
-    fn setup(mut scope: Scope) {
-        let handle_click = {
-            let scope = scope.clone();
-            Closure::<dyn Fn()>::new(move || handle_click(scope.clone()))
-        };
-        scope.borrow_mut().event_targets[0]
+        let handle_click = { Closure::<dyn FnMut()>::new(move || handle_click(state.clone())) };
+
+        scope.event_targets[0]
             .add_event_listener_with_callback("click", handle_click.as_ref().unchecked_ref())
             .unwrap();
         //TODO DON'T DO THIS. STORE THIS CLOSURE HANDLE FOR LATER CLEANUP
         handle_click.forget();
-
-        update_count(scope);
     }
-    fn new(text_nodes: TextNodes, event_targets: EventTargets) -> Scope {
-        let scope = Self {
+    fn new(
+        props: [(); 0],
+        text_nodes: TextNodes,
+        event_targets: EventTargets,
+    ) -> (Rc<Scope>, Rc<RefCell<State>>) {
+        let scope = Rc::new(Scope {
             props: Props,
-            state: RefCell::new(State::new()),
             text_nodes,
             event_targets,
-        };
-        let scope = Rc::new(scope);
-        Self::setup(scope.clone());
-        scope
+        });
+        let state = Rc::new(RefCell::new(State {
+            state_0: ScopeState::new(State0(0), scope.clone()),
+        }));
+        Self::setup(state.clone(), scope.clone());
+
+        (scope, state)
     }
 }
 
-//#[derive(Default)]
-pub struct NewScopeOptions<'a> {
-    pub text_nodes: slice::Iter<'a, web_sys::Text>,
-    pub event_targets: slice::Iter<'a, web_sys::EventTarget>,
-}
-
-//pub type OptionalTextNodes = ArrayVec<Option<web_sys::Text>, 1>;
-//pub type OptionalEventTargets = ArrayVec<Option<web_sys::EventTarget>, 1>;
-
-#[derive(Clone, Copy)]
 pub struct State {
-    count: state::Count,
-}
-
-impl State {
-    fn new() -> Self {
-        Self { count: 0 }
-    }
+    pub state_0: ScopeState<u32, State0, Scope>,
 }
 
 pub const TEMPLATE: &str = "<button>clicks: <!></button>";

@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 wasm-bindgen = "0.2.82"
 web-sys = { version = "0.3.59", features = [
+    "Element",
     "Text",
     "DocumentFragment",
     "Document",
@@ -17,4 +18,5 @@ web-sys = { version = "0.3.59", features = [
 ] }
 const_format = "0.2.26"
 arrayvec = "0.7.2"
-
+array-concat = "0.5.1"
+rapyd-macros = { version = "0.1.0", path = "../rapyd-macros" }

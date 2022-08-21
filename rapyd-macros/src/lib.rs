@@ -241,3 +241,8 @@ pub fn do_nothing(
 ) -> proc_macro::TokenStream {
     item
 }
+
+#[proc_macro]
+pub fn mock_component(_: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    quote!().into()
+}

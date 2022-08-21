@@ -1,5 +1,4 @@
 pub mod app;
-
 #[derive(Clone, Copy)]
 pub enum Walk {
     // go n levels deeper (the bool represents weather,
@@ -19,7 +18,8 @@ pub enum Walk {
     EventTarget,
     // an array of walks. This Variant will be used inside other arrays of walks,
     // creating a tree-like structure. These trees are meant to be read as if they were flat.
-    ChildWalks(&'static [Walk]),
+    //ChildWalks(&'static [Walk]),
 }
 
 mod counter;
+mod scope;
