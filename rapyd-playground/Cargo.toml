@@ -9,7 +9,6 @@ edition = "2021"
 rapyd-macros = { path = "../rapyd-macros", version = "0.1.0" }
 syn-rsx = "0.8.1"
 syn = { version = "1.0.98", features = ["full"] }
-quote = "1.0.20"
 proc-macro2 = "1.0.40"
 web-sys = { version = "0.3.59", features = [
     "Text",
@@ -30,3 +29,5 @@ rkyv = { version = "0.7.39", features = [
 ] }
 bytecheck = { version = "0.6.9", features = ["uuid"] }
 wasm-bindgen = "0.2.82"
+rapyd = { version = "0.1.0", path = "../rapyd" }
+enclose = "1.1.8"

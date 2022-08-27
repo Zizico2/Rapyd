@@ -1,37 +1,29 @@
-use std::{
-    array,
-    borrow::BorrowMut,
-    cell::{RefCell, RefMut},
-    ops::Deref,
-    rc::Rc,
-};
-use std::{mem, ptr::NonNull};
+use std::{cell::RefCell, ops::Deref, rc::Rc};
+
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
-use web_sys::console;
 
 use crate::{
     scope::{ScopeState, StateTag, UpdateState},
     Walk,
 };
 
-pub const N_TEXT_NODES: usize = 1;
-pub const N_EVENT_TARGETS: usize = 1;
+use enclose::enclose;
 
-pub type TextNodes = [web_sys::Text; N_TEXT_NODES];
-pub type EventTargets = [web_sys::EventTarget; N_EVENT_TARGETS];
+pub const SCOPED_N_TEXT_NODES: usize = 1;
+pub const SCOPED_N_EVENT_TARGETS: usize = 1;
+
+pub const N_TEXT_NODES: usize = SCOPED_N_TEXT_NODES;
+pub const N_EVENT_TARGETS: usize = SCOPED_N_EVENT_TARGETS;
+
+pub type TextNodes = [web_sys::Text; SCOPED_N_TEXT_NODES];
+pub type EventTargets = [web_sys::EventTarget; SCOPED_N_EVENT_TARGETS];
 
 // STATE -----------------------------------------------------------
 
 /* STATE */
 
 pub struct State0(u32);
-
-impl State0 {
-    fn new(val: u32) -> Self {
-        State0(val)
-    }
-}
 
 impl StateTag<u32> for State0 {}
 
@@ -70,43 +62,16 @@ pub struct Scope {
     pub text_nodes: TextNodes,
     pub event_targets: EventTargets,
 }
-pub fn new_scope<
-    'a,
-    T: Iterator<Item = &'a web_sys::Text>,
-    E: Iterator<Item = &'a web_sys::EventTarget>,
->(
-    props: [(); 0],
-    mut text_nodes: T,
-    mut event_targets: E,
-) -> (Rc<Scope>, Rc<RefCell<State>>) {
-    let text_nodes: TextNodes = array::from_fn(|_| {
-        console::log_1(&"text_next".into());
-        text_nodes
-            .next()
-            .expect("Too few TextNodes for counter")
-            .clone()
-    });
-    let event_targets: EventTargets = array::from_fn(|_| {
-        console::log_1(&"event_next".into());
-        event_targets
-            .next()
-            .expect("Too few TextNodes for counter")
-            .clone()
-    });
+pub fn new_scope(props: [(); 0], text_nodes: TextNodes, event_targets: EventTargets) -> Rc<Scope> {
     Scope::new(props, text_nodes, event_targets)
 }
 
-fn handle_click(state: Rc<RefCell<State>>) {
-    let mut state = state.deref().borrow_mut();
-    let mut state = state.state_0.borrow_mut();
-    *state += 1;
-}
-
 impl Scope {
-    fn setup(mut state: Rc<RefCell<State>>, scope: Rc<Scope>) {
-        std::mem::drop(state.deref().borrow_mut().state_0.borrow_mut());
-
-        let handle_click = { Closure::<dyn FnMut()>::new(move || handle_click(state.clone())) };
+    fn setup(
+        /*state: Rc<RefCell<State>>, */ scope: Rc<Scope>,
+        handle_click: Closure<dyn FnMut()>,
+    ) {
+        //let handle_click = { Closure::<dyn FnMut()>::new(move || handle_click(state.clone())) };
 
         scope.event_targets[0]
             .add_event_listener_with_callback("click", handle_click.as_ref().unchecked_ref())
@@ -114,22 +79,25 @@ impl Scope {
         //TODO DON'T DO THIS. STORE THIS CLOSURE HANDLE FOR LATER CLEANUP
         handle_click.forget();
     }
-    fn new(
-        props: [(); 0],
-        text_nodes: TextNodes,
-        event_targets: EventTargets,
-    ) -> (Rc<Scope>, Rc<RefCell<State>>) {
+    fn new(props: [(); 0], text_nodes: TextNodes, event_targets: EventTargets) -> Rc<Scope> {
         let scope = Rc::new(Scope {
             props: Props,
             text_nodes,
             event_targets,
         });
-        let state = Rc::new(RefCell::new(State {
-            state_0: ScopeState::new(State0(0), scope.clone()),
-        }));
-        Self::setup(state.clone(), scope.clone());
+        // user-code
+        let state_0 = ScopeState::new(State0(0), scope.clone());
+        //let state_0_1 = state_0.clone();
+        let handle_click = enclose!((state_0) move || {
+            let mut state_0 = state_0.borrow_mut();
+            *state_0  += 1;
+        });
 
-        (scope, state)
+        // user-code
+        Self::setup(scope.clone(), Closure::new(handle_click));
+        state_0.update_state();
+
+        scope
     }
 }
 
@@ -148,3 +116,7 @@ pub const WALKS: Walks = [
     Walk::Replace,
     Walk::Out(1),
 ];
+
+mod state {
+    struct _0 {}
+}

@@ -12,4 +12,6 @@ syn = { version = "1.0.98", features = ["full"] }
 quote = "1.0.20"
 proc-macro2 = "1.0.40"
 const_format = "0.2.26"
+convert_case = "0.5.0"
+rapyd = { version = "0.1.0", path = "../rapyd" }
 # handlebars = "4.3.2"

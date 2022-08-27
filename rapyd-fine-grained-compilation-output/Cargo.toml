@@ -20,3 +20,4 @@ const_format = "0.2.26"
 arrayvec = "0.7.2"
 array-concat = "0.5.1"
 rapyd-macros = { version = "0.1.0", path = "../rapyd-macros" }
+enclose = "1.1.8"

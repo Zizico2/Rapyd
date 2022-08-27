@@ -1,25 +1,39 @@
-pub mod app;
+use enclose::enclose;
+use rapyd_macros::always_works;
+use rapyd_macros::{always_works_attr, function_component};
 
-#[derive(Clone, Copy)]
-pub enum Walk {
-    // go n levels deeper (the bool represents weather,
-    // the node we end up inside of has events or not)
-    Next(usize, bool),
-    // skip n nodes
-    Over(usize),
-    // go n levels shallower
-    Out(usize),
-    // replace the next node. Doesn't move forward.
-    // if you were to do Replace again, you would replace the newly inserted node
-    //
-    // if yo u were to do FlagAsEventTarget after Replace you would be flagging
-    // the newly inserted node
-    Replace,
-    // flag the next node as an event target. Doesn't move forward.
-    EventTarget,
-    // an array of walks. This Variant will be used inside other arrays of walks,
-    // creating a tree-like structure. These trees are meant to be read as if they were flat.
-    MoreWalks(&'static [Walk]),
+#[function_component]
+pub fn my_func(age: i32, name: String) {
+    let mut count: u32 = state!(0);
+    let another: String = state!("".to_string());
+    //let aq = count.borrow_mut();
+
+    let count_1 = count.clone();
+    let count_2 = count.clone();
+
+    let click_handler = enclose!((mut count) move || {
+        *count.borrow_mut() += 1;
+    });
+
+    let click_handler_2 = enclose!((mut count) move || {
+        *count.borrow_mut() += 1;
+    });
+    render! (
+        <div>
+            <button on:click={click_handler}>
+                "debug i"
+            </button>
+            <button on:click={click_handler_2}>
+                "debug i"
+            </button>
+            <button>
+                <span>
+                    { *count_1.borrow() + *count_2.borrow() }
+                    "Some Text"
+                </span>
+            </button>
+            <button>
+            </button>
+        </div>
+    )
 }
-
-mod counter;

@@ -6,3 +6,4 @@ members = [
     "rapyd-web-playground",
     "rapyd-fine-grained-compilation-output"
 ]
+resolver = "2"
