@@ -4,6 +4,8 @@ members = [
     "rapyd-macros",
     "rapyd-playground",
     "rapyd-web-playground",
-    "rapyd-fine-grained-compilation-output"
+    "rapyd-fine-grained-compilation-output",
+    "struct-based-template",
+    "rapyd-macros-new"
 ]
 resolver = "2"

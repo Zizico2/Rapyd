@@ -1,5 +1,5 @@
 extern crate proc_macro;
-use std::{collections::{VecDeque, HashSet}, mem};
+use std::{collections::{VecDeque, HashSet, HashMap}};
 
 use convert_case::{Case, Casing};
 use syn::{
@@ -7,9 +7,9 @@ use syn::{
     parse::Parse,
     parse_macro_input, parse_quote,
     spanned::Spanned,
-    token::{Paren, Struct},
-    Attribute, Expr, GenericParam, Generics, ItemStruct, LitStr, Local, Path, PathArguments,
-    PathSegment, ReturnType, Signature, Stmt, Type, TypePath, Visibility, bracketed, ExprBlock,
+    token::{Paren},
+    Expr, GenericParam,  ItemStruct, LitStr, Local, Path, PathArguments,
+    PathSegment, ReturnType, Signature, Stmt, Type, TypePath, Visibility,   ItemImpl, ImplItemMethod,
 };
 
 use proc_macro2::{Ident, Span, TokenStream};
@@ -476,7 +476,7 @@ impl Parse for FunctionComponent {
 }
 
 struct StateStructFactory {
-    index: u128,
+    index: usize,
 }
 
 impl Default for StateStructFactory {
@@ -661,3 +661,413 @@ fn into_token_stream(walks: Vec<Walk>) -> TokenStream {
 // scope.event_targets[0]
 // .add_event_listener_with_callback("click", handle_click.as_ref().unchecked_ref())
 // .unwrap();
+
+#[proc_macro_attribute]
+pub fn component_struct(_: proc_macro::TokenStream,_: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    quote!().into()
+}
+
+#[proc_macro_attribute]
+pub fn render(_: proc_macro::TokenStream,_: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    quote!().into()
+}
+
+#[proc_macro]
+pub fn template(_: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    quote!(()).into()
+}
+
+#[proc_macro_attribute]
+pub fn struct_component(_attrs: proc_macro::TokenStream, input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let parsed: StructComponent = parse_macro_input!(input);
+    let state_tags = parsed.state_tags;
+    let serializable_scope = parsed.serializable_scope;
+    quote!(
+        #serializable_scope
+        #(#state_tags)*
+    ).into()
+}
+
+#[derive(Debug, Default)]
+struct StateHandleFactory {
+    index: usize,
+}
+
+impl StateHandleFactory {
+    fn next(&mut self, ty: Type, ident: Option<Ident>) -> StateHandle{
+        let res = StateHandle {
+            ident,
+            ty,
+            index: self.index,
+        };
+        self.index += 1;
+        res
+    }
+}
+
+
+#[derive(Debug)]
+struct StateHandle {
+    ident: Option<Ident>,
+    ty: Type,
+    index: usize,
+}
+
+impl StateHandle {
+    fn get_type(&self) -> Type {
+        let ty = &self.ty;
+        let ident = Ident::new(&format!("___StateTag{}", self.index), Span::mixed_site());
+        let res = parse_quote!(::rapyd::state::State<#ty, #ident, ___Scope>);
+        res
+    }
+}
+
+impl ToTokens for StateHandle  {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let ref ty = self.ty;
+        let tag_ident: Ident = Ident::new(&format!("___StateTag{}", self.index), Span::mixed_site());
+        let index = self.index;
+        let change_method_ident = self.ident.as_ref().map(|f| f.to_string()).unwrap_or(index.to_string());
+        let change_method_ident = Ident::new(&format!("___on_change_{}", change_method_ident), Span::mixed_site());
+
+        
+        quote!(
+            struct #tag_ident(#ty);
+            impl ::rapyd::state::StateTag<#ty> for #tag_ident {}
+            impl ::std::convert::From<#tag_ident> for #ty {
+                fn from(val: #tag_ident) -> Self {
+                    val.0
+                }
+            }
+            impl ::rapyd::state::UpdateState<#tag_ident, #ty> for ___Scope {
+                fn update_state(&mut self, new: &#ty) {
+                    self.#change_method_ident();
+                }
+            }
+
+        ).to_tokens(tokens);
+    }
+}
+
+#[derive(Debug)]
+struct StructComponent {
+    serializable_scope: ItemStruct,
+    state_tags: Vec<StateHandle>,
+}
+
+impl Parse for StructComponent {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        let mut state_tags: Vec<StateHandle> = Default::default();
+
+        let mut item_struct = input.parse::<ItemStruct>()?;
+
+        let mut state_factory = StateHandleFactory::default();
+        for field in item_struct.fields.iter_mut() {
+            if let Visibility::Inherited = field.vis {} else {
+                panic!("Component instance variables should have no visibility modifier!");
+            }
+            if field.attrs.first() == Some(&parse_quote!(#[state])) {
+                let _attr = field.attrs.pop().unwrap();
+
+                if !field.attrs.is_empty() {
+                    panic!("State variables shouldn't have any extra attributes!");
+                }
+
+                let handle = state_factory.next(field.ty.clone(), field.ident.clone());
+                field.ty = handle.get_type();
+                state_tags.push(handle);
+            }
+        }
+        item_struct.ident = parse_quote!(___SerializableScope);
+        Ok(Self {
+            state_tags,
+            serializable_scope: item_struct,
+        })
+    }
+}
+
+
+// ---------------------------------------------------------------
+// ---------------------------------------------------------------
+// ---------------------------------------------------------------
+// ---------------------------------------------------------------
+
+
+
+#[proc_macro_attribute]
+pub fn struct_component_impl(_attrs: proc_macro::TokenStream, input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let parsed: StructComponentImpl = parse_macro_input!(input);
+    let n_text_nodes = parsed.n_text_nodes;
+    let text_node_methods = parsed.text_node_methods;
+    let on_change_methods = parsed.on_change_methods.values();
+    let template = parsed.template;
+    let walks_len = parsed.walks.len();
+    let walks = into_token_stream(parsed.walks);
+    //let state_tags = parsed.state_tags;
+    //let serializable_scope = parsed.serializable_scope;
+    quote!(
+        #[derive(Clone)]
+        struct ___Scope {
+            text_nodes: [::web_sys::Text; #n_text_nodes],
+            serializable_scope: ::std::rc::Rc<___SerializableScope>,
+        }
+        impl ___Scope {
+            const TEMPLATE: &'static str = #template;
+            const WALKS: [::rapyd::Walk; #walks_len] = #walks;
+            #(#on_change_methods)*
+        }
+        impl ___SerializableScope {
+            #(#text_node_methods)*
+        }
+    ).into()
+}
+
+struct StructComponentImpl {
+    n_text_nodes: usize,
+    text_node_methods: Vec<ImplItemMethod>,
+    //registered_state_vars: Vec<Ident>,
+    on_change_methods: HashMap<Ident,  ImplItemMethod>,
+    template: String,
+    walks: Vec<Walk>,
+}
+
+impl Parse for StructComponentImpl {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        let borrow_regex = fancy_regex::Regex::new(r"borrow!\s\(.+?(?=\))").unwrap();
+        let mut n_text_nodes = 0;
+        let mut text_node_methods: Vec<ImplItemMethod> = Default::default();
+        //let mut registered_state_vars: HashSet<Ident> = Default::default();
+        let mut on_change_methods: HashMap<Ident, ImplItemMethod> = Default::default();
+        let mut output_array = Punctuated::<Expr, Token![,]>::default();
+        let mut template_stmt = 0;
+        let mut template = String::new();
+        let mut walks = Vec::<Walk>::new();
+        let mut closing_tags = Vec::<String>::new();
+        let mut blocks = String::new();
+
+        let item_impl = input.parse::<ItemImpl>()?;
+        for item in item_impl.clone().items {
+            match item {
+                syn::ImplItem::Method(method) => {
+                    let render_ident: Ident = parse_quote!(render);
+                    if method.sig.ident == render_ident {
+                        let mut template_macro_found = false;
+                        for (i, stmt) in method.block.stmts.iter().enumerate() {
+                            match stmt {
+                                Stmt::Expr(expr) => {
+                                    match expr {
+                                        Expr::Macro(mac) => {
+                                            if mac.mac.path == parse_quote!(template) {
+                                                if template_macro_found {
+                                                    panic!("The template macro should only be called once!");
+                                                } else {
+                                                    template_macro_found = true;
+                                                }
+                                                let nodes = parse2(mac.mac.tokens.clone()).unwrap();
+                                                for DepthFirstIterNode {node, level_diff} in into_depth_first_iterator(nodes)  {
+                                                    for _ in 0..-level_diff {
+                                                        let tag = closing_tags.pop().expect("No more closing tags!");
+                                                        walks.push(Walk::Out(1));
+                                                        template.push_str(&tag);    
+
+                                                    }
+                                                    if node.node_type == NodeType::Element {
+                                                        let node_name = node.name.unwrap().to_string();
+                                                        template.push_str(&format!("<{}>", node_name));
+                                                        walks.push(Walk::Next(1));
+                                                        closing_tags.push(format!("</{}>", node_name));
+                                                    }
+                                                    else if let Some(block) = node.value_as_block() {
+                                                        template.push_str("<!>");
+                                                        walks.push(Walk::Replace);
+                                                        walks.push(Walk::Over(1));
+                                                        let mut method = method.clone();
+                                                        method.attrs.push(parse_quote!(#[allow(unused_braces)]));
+                                                        method.attrs.push(parse_quote!(#[allow(unused_variables)]));
+                                                        method.sig.output = parse_quote!( -> ::std::string::String);
+                                                        method.sig.ident = Ident::new(&format!("text_node_rerender_{}", n_text_nodes), Span::mixed_site());
+                                                        let out: Expr = parse_quote!(::rapyd::state::ToTextData::to_text_data(#block));
+                                                        output_array.push(out.clone());
+                                                        method.block.stmts[i] = Stmt::Expr(out);
+                                                        template_stmt = i;
+                                                        text_node_methods.push(method.clone());
+                                                        
+                                                                                
+                                                        let block_str = block.block.to_token_stream().to_string();
+
+                                                        //TODO REGEX SHENENIGANS - THIS NEEDS TO BE REWORKED FOR SURE
+                                                        blocks.push_str(&format!("{}\n", block_str));
+                                                        let matches = borrow_regex.find_iter(&block_str).map(|m| {
+                                                                let m = m.unwrap().as_str();
+                                                                let ident: &str = &m[9..m.len()];
+                                                                Ident::new(ident, Span::mixed_site())
+                                                        });
+                                                        
+                                                        for state_ident in matches {
+                                                                                let ident = Ident::new(&format!("___on_change_{}", state_ident.to_string()), Span::mixed_site());
+                                                                                let inner_ident = method.clone().sig.ident;
+                                                                                match on_change_methods.get_mut(&ident) {
+                                                                                    Some(method) => {
+                                                                                        method.block.stmts.push(
+                                                                                            parse_quote!(
+                                                                                                {
+                                                                                                    let ref text = self.text_nodes[#n_text_nodes];
+                                                                                                    let new_data = self.serializable_scope.#inner_ident();
+                                                                                                    if text.data() != new_data {
+                                                                                                        text.set_data(&new_data);
+                                                                                                    }
+                                                                                                }
+                                                                                            )
+                                                                                        );
+                                                                                    },
+                                                                                    None => {
+                                                                                        let method = ImplItemMethod {
+                                                                                            attrs: Default::default(),
+                                                                                            vis: parse_quote!(pub),
+                                                                                            defaultness: None,
+                                                                                            sig: parse_quote!(fn #ident(&mut self)),
+                                                                                            block: parse_quote!(
+                                                                                                {
+                                                                                                    {
+                                                                                                        let ref text = self.text_nodes[#n_text_nodes];
+                                                                                                        let new_data = self.serializable_scope.#inner_ident();
+                                                                                                        if text.data() != new_data {
+                                                                                                            text.set_data(&new_data);
+                                                                                                        }
+                                                                                                    }
+                                                                                                }
+                                                                                            )
+                                                                                        };
+                                                                                        // let input_str = input.to_string();
+                                                                                        on_change_methods.insert(ident, method);
+                                                                                    }
+                                                                                }
+                                                                            }
+
+                                                        /* HANDLE ___on_changes */
+                                                        /*
+                                                        ___on_change_count
+                                                        */
+                                                        n_text_nodes += 1;
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        _ => {},
+                                    }
+                                },
+                                _ => {},
+                            }
+                        }
+                        let mut method = method.clone();
+                        method.attrs.push(parse_quote!(#[allow(unused_braces)]));
+                        method.attrs.push(parse_quote!(#[allow(unused_variables)]));
+                        method.sig.output = parse_quote!( -> [::std::string::String; #n_text_nodes]);
+                        method.sig.ident = Ident::new("text_node_rerender_all", Span::mixed_site());
+                        let out: Expr = parse_quote!([#output_array]);
+                        output_array.push(out.clone());
+                        method.block.stmts[template_stmt] = Stmt::Expr(out);
+                        text_node_methods.push(method.clone());
+                    }
+                },
+                _ => {},
+            }
+        }
+        
+        walks.push(Walk::Out(closing_tags.len()));
+        for tag in closing_tags {
+            template.push_str(&tag);
+        }
+         
+        Ok(StructComponentImpl {
+            n_text_nodes,
+            text_node_methods,
+            on_change_methods,
+            template,
+            walks,
+        })
+    }
+}
+
+
+#[proc_macro]
+pub fn borrow(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    borrow2(input.into()).into()
+}
+
+
+fn borrow2(input: TokenStream) -> TokenStream {
+    //quote!(::std::ops::Deref::deref(self.#input.borrow()))
+    quote!(&*self.#input.borrow())
+}
+
+#[proc_macro]
+pub fn dead_code(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    dead_code2(input.into()).into()
+}
+
+fn dead_code2(input: TokenStream) -> TokenStream {
+    quote!(
+        if false {
+            #input.borrow()
+        }
+    )
+}
+
+fn into_depth_first_iterator(val: Vec<Node>) -> DepthFirstIter{
+    DepthFirstIter {
+        nodes_stack: vec![val.into()]
+    }
+}
+
+struct DepthFirstIter {
+    nodes_stack: Vec<VecDeque<Node>>,
+}
+
+struct DepthFirstIterNode {
+    pub node: Node,
+    pub level_diff: isize,
+}
+
+impl Iterator for DepthFirstIter {
+    type Item = DepthFirstIterNode;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let old_stack_len = self.nodes_stack.len();
+        let mut nodes = None;
+        let mut level_diff = None;
+        while let Some(inner_nodes) = self.nodes_stack.last() {
+            if !inner_nodes.is_empty() {
+                level_diff = Some((self.nodes_stack.len() as isize) - (old_stack_len as isize));
+                nodes = self.nodes_stack.last_mut();
+                break;
+            }
+            self.nodes_stack.pop();
+        }
+
+        if let Some(nodes) = nodes {
+            if let Some(node) = nodes.pop_front() {
+                if node.node_type == NodeType::Element {
+                    self.nodes_stack.push(node.children.into());
+                }
+                return Some(
+                    DepthFirstIterNode {
+                        node: Node {
+                            children: vec![],
+                            ..node
+                        },
+                        level_diff: level_diff.expect("level_diff not set!")
+                    }
+                )
+            }
+        }
+        None
+    }
+    
+}
+
+
+//---------------
+//--------------- Module based
+//---------------
+

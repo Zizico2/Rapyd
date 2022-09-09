@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::{ops::AddAssign, rc::Rc};
 
 use proc_macro2::TokenStream;
 use web_sys::EventTarget;
@@ -8,7 +8,7 @@ pub mod state;
 pub mod util;
 
 //rule of thumb: variants that take a usize should be consuming, the others shouldn't
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Copy)]
 pub enum Walk {
     // go n levels deeper
     Next(usize),
@@ -24,6 +24,63 @@ pub enum Walk {
     Replace,
     // flag the next node as an event target. Doesn't move forward.
     EventTarget,
+}
+
+pub struct WalkFactory {
+    walks: Vec<Walk>,
+}
+
+impl WalkFactory {
+    pub fn push(&mut self, mut new_walk: Walk) {
+        let last = match self.walks.last_mut() {
+            Some(last) => last,
+            None => {
+                self.walks.push(new_walk);
+                return;
+            }
+        };
+
+        //TODO this should be able to be optimized further (minimize the number of walks)
+        match (last, &mut new_walk) {
+            (Walk::Next(n), Walk::Next(new_n)) => {
+                *n += *new_n;
+            }
+            (Walk::Out(n), Walk::Out(new_n)) => {
+                *n += *new_n;
+            }
+            (Walk::Over(n), Walk::Over(new_n)) => {
+                *n += *new_n;
+            }
+
+            (Walk::Next(n), Walk::Out(new_n)) => {
+                if n > new_n {
+                    *n -= *new_n;
+                } else if n < new_n {
+                    let n = *new_n - *n;
+                    self.walks.pop();
+                    self.push(Walk::Out(n));
+                } else {
+                    self.walks.pop();
+                }
+            }
+            (Walk::Out(n), Walk::Next(new_n)) => {
+                if n > new_n {
+                    *n -= *new_n;
+                } else if n < new_n {
+                    let n = *new_n - *n;
+                    self.walks.pop();
+                    self.push(Walk::Next(n));
+                } else {
+                    self.walks.pop();
+                }
+            }
+            (Walk::Over(_), Walk::Out(_)) => {
+                self.walks.pop();
+                self.walks.push(new_walk);
+            }
+            _ => self.walks.push(new_walk),
+        }
+    }
 }
 
 #[derive(Debug)]
