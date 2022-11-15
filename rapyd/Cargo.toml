@@ -6,8 +6,8 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-proc-macro2 = "1.0.43"
-quote = "1.0.21"
-syn = "1.0.99"
-web-sys = { version = "0.3.59", features = ["EventTarget", "Text"] }
-
+bumpalo = "3.11.0"
+rapyd-macros = { version = "0.1.0", path = "../rapyd-macros" }
+slotmap = "1.0.6"
+type-map = "0.5.0"
+web-sys = { version = "0.3.60", features = ["Text", "CharacterData"] }

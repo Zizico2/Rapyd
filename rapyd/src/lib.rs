@@ -1,122 +1,170 @@
-use std::{ops::AddAssign, rc::Rc};
+use std::{
+    cell::{RefCell, RefMut},
+    fmt::Display,
+    ops::{Deref, DerefMut},
+};
+pub use rapyd_macros;
 
-use proc_macro2::TokenStream;
-use web_sys::EventTarget;
-use web_sys::Text;
-
-pub mod state;
-pub mod util;
-
-//rule of thumb: variants that take a usize should be consuming, the others shouldn't
-#[derive(Clone, Debug, Copy)]
-pub enum Walk {
-    // go n levels deeper
-    Next(usize),
-    // skip n nodes
-    Over(usize),
-    // go n levels shallower
-    Out(usize),
-    // replace the next node. Doesn't move forward.
-    // if you were to do Replace again, you would replace the newly inserted node
-    //
-    // if you were to do EventTarget after Replace you would be flagging
-    // the newly inserted node
-    Replace,
-    // flag the next node as an event target. Doesn't move forward.
-    EventTarget,
+pub struct StateCell<'a, ValueType, ScopeType: Scope, StateTagType: Copy + StateTag<ScopeType>> {
+    value: RefCell<ValueType>,
+    state_tag: StateTagType,
+    scope: &'a ScopeType,
 }
 
-pub struct WalkFactory {
-    walks: Vec<Walk>,
-}
-
-impl WalkFactory {
-    pub fn push(&mut self, mut new_walk: Walk) {
-        let last = match self.walks.last_mut() {
-            Some(last) => last,
-            None => {
-                self.walks.push(new_walk);
-                return;
-            }
-        };
-
-        //TODO this should be able to be optimized further (minimize the number of walks)
-        match (last, &mut new_walk) {
-            (Walk::Next(n), Walk::Next(new_n)) => {
-                *n += *new_n;
-            }
-            (Walk::Out(n), Walk::Out(new_n)) => {
-                *n += *new_n;
-            }
-            (Walk::Over(n), Walk::Over(new_n)) => {
-                *n += *new_n;
-            }
-
-            (Walk::Next(n), Walk::Out(new_n)) => {
-                if n > new_n {
-                    *n -= *new_n;
-                } else if n < new_n {
-                    let n = *new_n - *n;
-                    self.walks.pop();
-                    self.push(Walk::Out(n));
-                } else {
-                    self.walks.pop();
-                }
-            }
-            (Walk::Out(n), Walk::Next(new_n)) => {
-                if n > new_n {
-                    *n -= *new_n;
-                } else if n < new_n {
-                    let n = *new_n - *n;
-                    self.walks.pop();
-                    self.push(Walk::Next(n));
-                } else {
-                    self.walks.pop();
-                }
-            }
-            (Walk::Over(_), Walk::Out(_)) => {
-                self.walks.pop();
-                self.walks.push(new_walk);
-            }
-            _ => self.walks.push(new_walk),
+impl<'a, ValueType, ScopeType: Scope, StateTagType: Copy + StateTag<ScopeType>>
+    StateCell<'a, ValueType, ScopeType, StateTagType>
+{
+    fn borrow_mut(&self) -> StateMut<'a, '_, ValueType, ScopeType, StateTagType> {
+        StateMut {
+            value: self.value.borrow_mut(),
+            inner_state: self.state_tag,
+            scope: self.scope,
         }
     }
 }
 
-#[derive(Debug)]
-pub struct Dom<const T: usize, const E: usize> {
-    pub text_nodes: [Text; T],
-    pub event_targets: [EventTarget; E],
-}
-
-#[derive(Debug)]
-pub struct Scope<
-    const SCOPED_N_TEXT_NODES: usize,
-    const SCOPED_N_EVENT_TARGETS: usize,
-    Props,
-    ChildScopes,
-> {
-    pub props: Props,
-    pub dom: Dom<SCOPED_N_TEXT_NODES, SCOPED_N_EVENT_TARGETS>,
-    pub child_scopes: ChildScopes,
-}
-
-impl<const N_TEXT_NODES: usize, const N_EVENT_TARGETS: usize, Props, ChildScopes>
-    Scope<N_TEXT_NODES, N_EVENT_TARGETS, Props, ChildScopes>
+impl<'a, ValueType: ToDomString, ScopeType: Scope, StateTagType: Copy + StateTag<ScopeType>>
+    ToDomString for StateCell<'a, ValueType, ScopeType, StateTagType>
 {
-    pub fn new(
-        props: Props,
-        text_nodes: [Text; N_TEXT_NODES],
-        event_targets: [EventTarget; N_EVENT_TARGETS],
-        child_scopes: ChildScopes,
-    ) -> Rc<Self> {
-        Rc::new(Self {
-            props,
-            dom: Dom {
-                text_nodes,
-                event_targets,
-            },
-            child_scopes,
-        })
+    fn to_dom_string(&self) -> String {
+        self.value.borrow().to_dom_string()
     }
 }
+
+pub struct State<'a, ValueType> {
+    value: RefMut<'a, ValueType>,
+}
+
+impl<ValueType> Deref for State<'_, ValueType> {
+    type Target = ValueType;
+
+    fn deref(&self) -> &Self::Target {
+        self.value.deref()
+    }
+}
+
+impl<ValueType: ToDomString> ToDomString for State<'_, ValueType> {
+    fn to_dom_string(&self) -> String {
+        self.value.to_dom_string()
+    }
+}
+
+pub struct StateMut<'a, 'b, ValueType, ScopeType: Scope, StateTagType: StateTag<ScopeType>> {
+    value: RefMut<'b, ValueType>,
+    inner_state: StateTagType,
+    scope: &'a ScopeType,
+}
+
+impl<ValueType, ScopeType: Scope, StateTagType: StateTag<ScopeType>> Drop
+    for StateMut<'_, '_, ValueType, ScopeType, StateTagType>
+{
+    fn drop(&mut self) {
+        self.inner_state.on_change(self.scope);
+    }
+}
+
+impl<ValueType, ScopeType: Scope, StateTagType: StateTag<ScopeType>> Deref
+    for StateMut<'_, '_, ValueType, ScopeType, StateTagType>
+{
+    type Target = ValueType;
+
+    fn deref(&self) -> &Self::Target {
+        self.value.deref()
+    }
+}
+
+impl<ValueType, ScopeType: Scope, StateTagType: StateTag<ScopeType>> DerefMut
+    for StateMut<'_, '_, ValueType, ScopeType, StateTagType>
+{
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.value.deref_mut()
+    }
+}
+
+impl<ValueType: ToDomString, ScopeType: Scope, StateTagType: StateTag<ScopeType>> ToDomString
+    for StateMut<'_, '_, ValueType, ScopeType, StateTagType>
+{
+    fn to_dom_string(&self) -> String {
+        self.value.to_dom_string()
+    }
+}
+
+pub trait StateTag<ScopeType: Scope> {
+    fn on_change(&self, scope: &ScopeType);
+}
+
+pub trait Scope {}
+
+pub trait ToDomString {
+    fn to_dom_string(&self) -> String;
+}
+
+impl<T: Display> ToDomString for T {
+    fn to_dom_string(&self) -> String {
+        self.to_string()
+    }
+}
+/*
+#[component]
+mod Counter {
+    // can access the vars diretly or use "&self"
+
+    #[scope]
+    struct Test {
+        // #[prop]
+        #[state]
+        count: i32,
+    }
+
+    /*
+    html! {
+        <button on:click={ increment_count }>
+            "You clicked me this many times: " { count }
+        </button>
+        /*
+        <button on:click={ increment_count }>
+            "You clicked me this many times: " { count }
+        </button>
+        */
+    }
+
+    impl Scope {
+        // can access the vars directly or use "&self" or "scope: scope!()"
+        fn increment_count(&self) {
+            //let mut count = self.count.borrow_mut();
+            // *count += 1;
+        }
+    }
+
+    //#[on_change(count)]
+    fn log_changes() {
+        //println!(count);
+    }
+    */
+}
+/*
+#[cfg(test)]
+mod test {
+    use rapyd_macros::component;
+
+    #[test]
+    fn test1() {
+        const RIGHT_HTML: &str = "<div><div></div><div><div></div></div></div><div></div><div><div><div></div><div></div></div><div></div><div><div></div></div><div></div></div>";
+        #[component]
+        mod Test {
+            html! {<div><div></div><div><div></div></div></div><div></div><div><div><div></div><div></div></div><div></div><div><div></div></div><div></div></div>}
+        }
+        assert_eq!(RIGHT_HTML, Test::__html_template::TEMPLATE);
+    }
+    #[test]
+    fn test2() {
+        const RIGHT_HTML: &str = "<span><!><span></span><div><div><!></div></div>hi</span><div></div><div><div>hi <div></div><div><!></div></div><span></span><div><div></div><!></div><div></div></div>";
+        #[component]
+        mod Test {
+            html! {<span>{""}<span></span><div><div>{""}</div></div>"hi"</span><div></div><div><div>"hi "<div></div><div>{""}</div></div><span></span><div><div></div>{""}</div><div></div></div>}
+        }
+        assert_eq!(RIGHT_HTML, Test::__html_template::TEMPLATE);
+    }
+}
+*/
+*/

@@ -2,10 +2,11 @@
 members = [
     "rapyd",
     "rapyd-macros",
-    "rapyd-playground",
-    "rapyd-web-playground",
-    "rapyd-fine-grained-compilation-output",
-    "struct-based-template",
-    "rapyd-macros-new"
 ]
+
+exclude = [
+    "examples/*",
+]
+
 resolver = "2"
+
