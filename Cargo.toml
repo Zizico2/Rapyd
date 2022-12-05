@@ -2,10 +2,7 @@
 members = [
     "rapyd",
     "rapyd-macros",
-]
-
-exclude = [
-    "examples/*",
+    "examples/aotp"
 ]
 
 resolver = "2"

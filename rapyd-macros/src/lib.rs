@@ -11,7 +11,7 @@ use syn::{
     visit::Visit,
     visit_mut::VisitMut,
     Attribute, Error, Expr, ExprCall, ExprLet, Field, Ident, ImplItemMethod, Item, ItemFn,
-    ItemImpl, ItemMacro, ItemMod, ItemStruct, Local, MacroDelimiter, Meta, Path, Token,
+    ItemImpl, ItemMacro, ItemMod, ItemStruct, Local, MacroDelimiter, Meta, Path, Token, ImplItem,
 };
 use syn_rsx::parse2;
 mod scope_field_attrs;
@@ -86,18 +86,16 @@ pub fn component(
     component.content.as_mut().unwrap().1.push(scope.into());
     */
 
-    component_visitor.scope_visitor.scope_impl.and_then(|item_impl| {
-        component
-            .content
-            .as_mut()
-            .unwrap()
-            .1
-            .push(item_impl.into());
-        Some(())
-    });
+    component_visitor
+        .scope_visitor
+        .scope_impl
+        .and_then(|item_impl| {
+            component.content.as_mut().unwrap().1.push(item_impl.into());
+            Some(())
+        });
 
     quote! {
-        #component
+        //#component
     }
     .into()
 }
@@ -663,4 +661,25 @@ impl Test {
     fn c(&self) -> String {
         Self::b(&self)
     }
+}
+
+#[proc_macro_error]
+#[proc_macro_attribute]
+pub fn component_test(
+    _attr: proc_macro::TokenStream,
+    item: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    let item_struct = parse_macro_input!(item as ItemStruct);
+    let struct_ident = &item_struct.ident;
+    let component_impl: ItemImpl = parse_quote!(
+        impl #struct_ident {
+            pub const __TEMPLATE: &dyn Template = &Self::render();
+        }
+    );
+    quote!(
+        #item_struct
+        #component_impl
+        impl Lifecycle for Counter {}
+    ).into()
+    
 }
