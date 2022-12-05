@@ -10,8 +10,9 @@ use syn::{
     parse_macro_input, parse_quote,
     visit::Visit,
     visit_mut::VisitMut,
-    Attribute, Error, Expr, ExprCall, ExprLet, Field, Ident, ImplItemMethod, Item, ItemFn,
-    ItemImpl, ItemMacro, ItemMod, ItemStruct, Local, MacroDelimiter, Meta, Path, Token, ImplItem,
+    Attribute, Error, Expr, ExprCall, ExprClosure, ExprLet, Field, Ident, ImplItem, ImplItemMethod,
+    Item, ItemFn, ItemImpl, ItemMacro, ItemMod, ItemStruct, Local, MacroDelimiter, Meta, Path,
+    Token,
 };
 use syn_rsx::parse2;
 mod scope_field_attrs;
@@ -680,6 +681,21 @@ pub fn component_test(
         #item_struct
         #component_impl
         impl Lifecycle for Counter {}
-    ).into()
-    
+    )
+    .into()
+}
+
+#[proc_macro_error]
+#[proc_macro]
+pub fn derived(item: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let mut closure = parse_macro_input!(item as ExprClosure);
+    let body = closure.body.clone();
+    *closure.body.as_mut() = parse_quote!({
+        let cx: Self = cx;
+        #body
+    });
+    quote!(
+        #closure
+    )
+    .into()
 }

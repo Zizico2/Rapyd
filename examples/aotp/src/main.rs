@@ -9,6 +9,8 @@
 
 use std::{fmt::Display, marker::PhantomData};
 
+use rapyd_macros::derived;
+
 fn main() {
     /*
     println!("{}", ComponentWithRender::__TEMPLATE.get(0).unwrap()());
@@ -40,6 +42,7 @@ pub struct Counter {
 
 impl Counter {
     const fn render() -> impl Template {
+        let d = derived!(|cx| "hi");
         let a = |a| {
             let b: u32 = a;
         };
@@ -60,12 +63,15 @@ pub struct Counter {
 
 impl Counter {
     const fn render() -> impl Template {
-        let multiplied = derived!(|cx: Self, step: i32| cx.count * step);
-        html! {
+        let multiplied = derived!(|cx, step: i32|
+            let cx: Self = cx;
+            cx.count * step);
+        html!(|cx| {
             <button>
                 "I count "{ multiplied(cx, 5) }" !";
             </button>
         }
+        )
     }
 }
 */
@@ -78,3 +84,13 @@ impl<T> Data for Derived<T> {}
 impl<T: Display> Data for T {}
 
 trait Data {}
+
+struct Test {}
+
+impl Test {
+    fn test() {
+        let a = |a| {
+            let a: Self = a;
+        };
+    }
+}
