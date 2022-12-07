@@ -6,13 +6,13 @@ use std::{
     mem,
 };
 use syn::{
-    parse::{Parse, ParseStream},
+    parse::{Parse, ParseBuffer, ParseStream},
     parse_macro_input, parse_quote,
     visit::Visit,
     visit_mut::VisitMut,
-    Attribute, Error, Expr, ExprCall, ExprClosure, ExprLet, Field, Ident, ImplItem, ImplItemMethod,
-    Item, ItemFn, ItemImpl, ItemMacro, ItemMod, ItemStruct, Local, MacroDelimiter, Meta, Path,
-    Token,
+    Attribute, Error, Expr, ExprCall, ExprClosure, ExprLet, ExprMacro, Field, Ident, ImplItem,
+    ImplItemMethod, Item, ItemFn, ItemImpl, ItemMacro, ItemMod, ItemStruct, Local, Macro,
+    MacroDelimiter, Meta, Path, Token,
 };
 use syn_rsx::parse2;
 mod scope_field_attrs;
@@ -663,6 +663,15 @@ impl Test {
         Self::b(&self)
     }
 }
+/////////////////////////
+/////////////////////////
+/////////////////////////
+/////////////////////////
+/////////////////////////
+/////////////////////////
+/////////////////////////
+/////////////////////////
+/////////////////////////
 
 #[proc_macro_error]
 #[proc_macro_attribute]
@@ -695,7 +704,19 @@ pub fn derived(item: proc_macro::TokenStream) -> proc_macro::TokenStream {
         #body
     });
     quote!(
-        #closure
+        Derived(#closure)
     )
     .into()
+}
+
+struct ComponentVisitorNew {
+    error: Option<Error>,
+}
+
+impl VisitMut for ComponentVisitorNew {
+    fn visit_field_mut(&mut self, field: &mut Field) {
+        let ty: Result<Macro, _> = syn::parse2((&field.ty).into_token_stream());
+
+        //ty.par
+    }
 }

@@ -7,6 +7,7 @@
 // #![feature(min_specialization)]
 // #![feature(rustc_attrs)]
 
+// include!("main.rs");
 use std::{fmt::Display, marker::PhantomData};
 
 use rapyd_macros::derived;
@@ -33,24 +34,47 @@ impl<const T: usize> Template for [fn() -> &'static str; T] {
 }
 
 // to enable lifecycle hooks access: #[rapyd_macros::component_test(lifecycle)]
+#[derive(Default)]
 #[rapyd_macros::component_test]
 pub struct Counter {
-    //#[prop]
-    //#[state]
+    #[prop(or(1))]
+    //#[prop(or_else(|| -> 1))]
+    step: u32,
+    #[prop(default)]
+    initial_count: u32,
+    #[state]
     count: u32,
 }
 
 impl Counter {
-    const fn render() -> impl Template {
-        let d = derived!(|cx| "hi");
-        let a = |a| {
-            let b: u32 = a;
-        };
-        let a = || "a";
-        let b = || "2";
-        let c: [fn() -> &'static str; 2] = [a, b];
-        c
+    fn init_count(&self) -> u32 {
+        self.initial_count
     }
+    fn increment_count(&self) {
+        *self.count.borrow_mut() += 1;
+    }
+    const fn render() -> impl Template {
+        let multiplied = derived!(|cx, step: u32| cx.count * step);
+
+        effect!(|cx| log!(cx.count.into()));
+
+        html!(
+            <button @click={ cx.increment_count }>
+                "I count "{ multiplied(cx, 5) }" !";
+            </button>
+        )
+    }
+}
+
+struct Testss<const T: usize> {
+    hi: u32,
+}
+
+const fn hi() -> usize {
+    4
+}
+fn te() {
+    let a = Testss::<{ hi() }> { hi: 7 };
 }
 
 /*
@@ -62,23 +86,24 @@ pub struct Counter {
 }
 
 impl Counter {
+    fn increment_count(&mut self) {
+        self.count += 1;
+    }
     const fn render() -> impl Template {
-        let multiplied = derived!(|cx, step: i32|
-            let cx: Self = cx;
-            cx.count * step);
-        html!(|cx| {
-            <button>
+        let multiplied = derived!(|cx, step: i32| cx.count * step);
+
+        effect!(|cx| log!(cx.count.into()));
+
+        html!(
+            <button @click={ cx.increment_count }>
                 "I count "{ multiplied(cx, 5) }" !";
             </button>
-        }
         )
     }
 }
 */
 
-struct Derived<T> {
-    _marker: PhantomData<T>,
-}
+struct Derived<T>(T);
 
 impl<T> Data for Derived<T> {}
 impl<T: Display> Data for T {}
@@ -87,8 +112,10 @@ trait Data {}
 
 struct Test {}
 
+struct Props;
 impl Test {
     fn test() {
+        let a = Some(());
         let a = |a| {
             let a: Self = a;
         };
