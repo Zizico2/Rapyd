@@ -8,8 +8,9 @@
 // #![feature(rustc_attrs)]
 
 // include!("main.rs");
-use std::{fmt::Display, marker::PhantomData};
+use std::{cell::RefCell, fmt::Display, marker::PhantomData};
 
+#[rapyd_macros::test_use_attr]
 use rapyd_macros::derived;
 
 fn main() {
@@ -19,12 +20,24 @@ fn main() {
     */
 }
 
-trait Lifecycle {
+trait Lifecycle
+where
+    Self: Sized,
+{
+    fn on_new(self) -> Self {
+        self
+    }
     fn on_mount(scope: &Self) {}
     fn on_cleanup(scope: &Self) {}
 }
 pub trait Template {
     fn get(&self, i: usize) -> Option<&fn() -> &'static str>;
+}
+
+impl Template for () {
+    fn get(&self, i: usize) -> Option<&fn() -> &'static str> {
+        None
+    }
 }
 
 impl<const T: usize> Template for [fn() -> &'static str; T] {
@@ -34,33 +47,35 @@ impl<const T: usize> Template for [fn() -> &'static str; T] {
 }
 
 // to enable lifecycle hooks access: #[rapyd_macros::component_test(lifecycle)]
-#[derive(Default)]
+// GO WITH THE SIMPLES VERSION. just prop(value) or state(value) is gooe enough for now.
+// think of possible alternatives later or stick to this option
 #[rapyd_macros::component_test]
 pub struct Counter {
-    #[prop(or(1))]
+    #[prop(1)]
     //#[prop(or_else(|| -> 1))]
     step: u32,
-    #[prop(default)]
+    #[prop(0)]
     initial_count: u32,
-    #[state]
-    count: u32,
+    #[state(0)]
+    count: RefCell<u32>,
+    // prop/state
+    // #[prop(or_default)]
+    // #[prop(or(0))]
+    // #[prop(or_else(|| { 0 }))]
 }
 
 impl Counter {
-    fn init_count(&self) -> u32 {
-        self.initial_count
-    }
     fn increment_count(&self) {
         *self.count.borrow_mut() += 1;
     }
     const fn render() -> impl Template {
-        let multiplied = derived!(|cx, step: u32| cx.count * step);
+        let multiplied = derived!(|step: u32| *self.count.borrow() * step);
 
-        effect!(|cx| log!(cx.count.into()));
+        effect!(|| log!(self.count.into()));
 
         html!(
-            <button @click={ cx.increment_count }>
-                "I count "{ multiplied(cx, 5) }" !";
+            <button @click={ self.increment_count }>
+                "I count "{ multiplied!(5) }" !";
             </button>
         )
     }
@@ -103,9 +118,9 @@ impl Counter {
 }
 */
 
-struct Derived<T>(T);
+struct __Derived<T>(T);
 
-impl<T> Data for Derived<T> {}
+impl<T> Data for __Derived<T> {}
 impl<T: Display> Data for T {}
 
 trait Data {}
@@ -120,4 +135,8 @@ impl Test {
             let a: Self = a;
         };
     }
+    fn h1(&self) {
+        Test::h2(self)
+    }
+    fn h2(&self) {}
 }

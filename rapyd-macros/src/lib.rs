@@ -8,11 +8,13 @@ use std::{
 use syn::{
     parse::{Parse, ParseBuffer, ParseStream},
     parse_macro_input, parse_quote,
+    punctuated::Punctuated,
+    token::Comma,
     visit::Visit,
     visit_mut::VisitMut,
-    Attribute, Error, Expr, ExprCall, ExprClosure, ExprLet, ExprMacro, Field, Ident, ImplItem,
-    ImplItemMethod, Item, ItemFn, ItemImpl, ItemMacro, ItemMod, ItemStruct, Local, Macro,
-    MacroDelimiter, Meta, Path, Token,
+    Attribute, Error, Expr, ExprCall, ExprClosure, ExprLet, ExprMacro, ExprPath, Field, Ident,
+    ImplItem, ImplItemMethod, Item, ItemFn, ItemImpl, ItemMacro, ItemMod, ItemStruct, Local, Macro,
+    MacroDelimiter, Member, Meta, Pat, Path, Token,
 };
 use syn_rsx::parse2;
 mod scope_field_attrs;
@@ -51,6 +53,15 @@ impl VisitMut for ComponentVisitor {
             }
         }
     }
+}
+
+#[proc_macro_error]
+#[proc_macro_attribute]
+pub fn test_use_attr(
+    _attr: proc_macro::TokenStream,
+    item: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    item
 }
 
 #[proc_macro_error]
@@ -698,25 +709,65 @@ pub fn component_test(
 #[proc_macro]
 pub fn derived(item: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let mut closure = parse_macro_input!(item as ExprClosure);
-    let body = closure.body.clone();
+    /*
+    let first = closure.inputs.first_mut();
+    if first == Some(&mut parse_quote!(&self)) {
+        let pat = first.unwrap();
+        *pat = parse_quote!(__cx);
+    } else {
+        panic!("first argument of derived must be &self");
+    }
+    */
+    //
+    let mut inputs = Punctuated::<Pat, Comma>::new();
+    inputs.push(parse_quote!(__cx));
+    inputs.extend(closure.inputs);
+    closure.inputs = inputs;
+
+    let mut body = closure.body.clone();
+    let mut visitor = ComponentVisitorNew {
+        error: None,
+        context_members: Default::default(),
+    };
+    visitor.visit_expr_mut(&mut (*body));
     *closure.body.as_mut() = parse_quote!({
-        let cx: Self = cx;
+        let __cx: &Self = __cx;
         #body
     });
+    // panic!("{:#?}", visitor.context_members);
     quote!(
-        Derived(#closure)
+        __Derived(#closure)
     )
     .into()
 }
 
 struct ComponentVisitorNew {
     error: Option<Error>,
+    context_members: HashSet<Member>,
 }
 
 impl VisitMut for ComponentVisitorNew {
-    fn visit_field_mut(&mut self, field: &mut Field) {
-        let ty: Result<Macro, _> = syn::parse2((&field.ty).into_token_stream());
+    fn visit_ident_mut(&mut self, i: &mut Ident) {
+        let self_ident: Ident = Ident::new("self", Span::mixed_site());
+        if *i == self_ident {
+            *i = parse_quote!(__cx);
+        }
+    }
+    fn visit_expr_field_mut(&mut self, i: &mut syn::ExprField) {
+        let self_ident: Ident = Ident::new("self", Span::mixed_site());
+        let self_path = ExprPath {
+            attrs: vec![],
+            qself: None,
+            path: self_ident.into(),
+        };
+        if *i.base == Expr::Path(self_path) {
+            self.context_members.insert(i.member.clone());
+        }
 
-        //ty.par
+        for attr in &mut i.attrs {
+            self.visit_attribute_mut(attr);
+        }
+        self.visit_expr_mut(&mut i.base);
+        self.visit_member_mut(&mut i.member);
     }
 }
