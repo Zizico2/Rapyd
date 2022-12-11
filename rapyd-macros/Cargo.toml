@@ -19,5 +19,5 @@ syn = { version = "1.0.102", features = [
     "visit",
     "visit-mut",
 ] }
-# syn-rsx = "0.8.1"
-syn-rsx = { git = "https://github.com/stoically/syn-rsx", branch = "node-enum" }
+syn-rsx = "0.9.0"
+# syn-rsx = { git = "https://github.com/stoically/syn-rsx", branch = "node-enum" }

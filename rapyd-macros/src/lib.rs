@@ -591,13 +591,10 @@ fn process_html_macro(
                                     break;
                                 }
                             }
-                            syn_rsx::NodeName::Dash(_) => {
-                                todo!()
-                            }
-                            syn_rsx::NodeName::Colon(_) => {
-                                todo!()
-                            }
                             syn_rsx::NodeName::Block(_) => {
+                                todo!()
+                            }
+                            syn_rsx::NodeName::Punctuated(_) => {
                                 todo!()
                             }
                         };
@@ -613,7 +610,7 @@ fn process_html_macro(
                     syn_rsx::Node::Comment(_) => {}
                     syn_rsx::Node::Doctype(_) => {}
                     syn_rsx::Node::Block(block) => {
-                        let mut block_content = block.value.expr;
+                        let mut block_content = block.value.into();
                         // find state vars
                         let dependencies = {
                             let mut dependencies =
