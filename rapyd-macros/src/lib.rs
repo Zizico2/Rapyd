@@ -8,7 +8,7 @@ use std::{
 use syn::{
     parse::{Parse, ParseBuffer, ParseStream},
     parse_macro_input, parse_quote,
-    punctuated::Punctuated,
+    punctuated::{self, Punctuated},
     token::Comma,
     visit::Visit,
     visit_mut::VisitMut,
@@ -706,16 +706,6 @@ pub fn component_test(
 #[proc_macro]
 pub fn derived(item: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let mut closure = parse_macro_input!(item as ExprClosure);
-    /*
-    let first = closure.inputs.first_mut();
-    if first == Some(&mut parse_quote!(&self)) {
-        let pat = first.unwrap();
-        *pat = parse_quote!(__cx);
-    } else {
-        panic!("first argument of derived must be &self");
-    }
-    */
-    //
     let mut inputs = Punctuated::<Pat, Comma>::new();
     inputs.push(parse_quote!(__cx));
     inputs.extend(closure.inputs);
@@ -732,9 +722,22 @@ pub fn derived(item: proc_macro::TokenStream) -> proc_macro::TokenStream {
         #body
     });
     // panic!("{:#?}", visitor.context_members);
-    quote!(
-        __Derived(#closure)
-    )
+
+    let mut punctuated = Punctuated::<_, Token![,]>::new();
+    for dependency in visitor.context_members {
+        match dependency {
+            Member::Named(dependency) => {
+                let dependency = dependency.to_string();
+                punctuated.push(quote!(#dependency))},
+            Member::Unnamed(_) => panic!("Scope should have named members"),
+        }
+    }
+    quote! {
+        __Derived{
+            closure: #closure,
+            dependencies: [#punctuated]
+        }
+    }
     .into()
 }
 

@@ -8,10 +8,11 @@
 // #![feature(rustc_attrs)]
 
 // include!("main.rs");
-use std::{cell::RefCell, fmt::Display, marker::PhantomData};
+use std::{cell::RefCell, collections::HashSet, fmt::Display, marker::PhantomData};
 
 #[rapyd_macros::test_use_attr]
 use rapyd_macros::derived;
+use syn::Ident;
 
 fn main() {
     /*
@@ -71,13 +72,28 @@ impl Counter {
     const fn render() -> impl Template {
         let multiplied = derived!(|step: u32| *self.count.borrow() * step);
 
+        let mut n = 0;
+
+        while n < multiplied.dependencies.len() {
+            let dep = multiplied.dependencies[n];
+
+            n += 1;
+        }
+
+        /*
         effect!(|| log!(self.count.into()));
 
         html!(
+            state_effect_
             <button @click={ self.increment_count }>
                 "I count "{ multiplied!(5) }" !";
             </button>
         )
+        let mut tok = TokenStream::new();
+        for dep in multiplied.dependencies {
+
+        }
+        */
     }
 }
 
@@ -118,9 +134,12 @@ impl Counter {
 }
 */
 
-struct __Derived<T>(T);
+struct __Derived<const AmountOfDependencies: usize, T> {
+    closure: T,
+    dependencies: [&'static str; AmountOfDependencies],
+}
 
-impl<T> Data for __Derived<T> {}
+impl<const AmountOfDependencies: usize, T> Data for __Derived<AmountOfDependencies, T> {}
 impl<T: Display> Data for T {}
 
 trait Data {}
@@ -139,4 +158,20 @@ impl Test {
         Test::h2(self)
     }
     fn h2(&self) {}
+}
+
+use syn::__private::Span;
+
+trait TemplateEx {
+    fn update_prop(&self, prop: usize) -> &dyn FnMut() -> ();
+}
+
+struct T {
+    test: [fn() -> ()]
+}
+
+impl TemplateEx for T {
+    fn update_prop(&self, prop: usize) -> &dyn FnMut() -> () {
+        &self.test[0]
+    }
 }
