@@ -154,9 +154,11 @@ impl Test {
             let a: Self = a;
         };
     }
+
     fn h1(&self) {
         Test::h2(self)
     }
+    
     fn h2(&self) {}
 }
 
