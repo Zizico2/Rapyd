@@ -74,49 +74,13 @@ pub struct Counter {
 }
 
 impl Component for Counter {
-    const TEMPLATE: &'static dyn Template<Counter> = todo!();
+    const TEMPLATE: &'static dyn Template<Counter> = &Self::render();
 }
 
 pub trait Component: /* Sized  + */ 'static {
     const TEMPLATE: &'static dyn Template<Self>;
 }
-/*
-struct StateRefCell<const STATE_INDEX: usize, S: Component, Inner> {
-    value: RefCell<Inner>,
-    scope: Rc<S>,
-}
 
-impl<const STATE_INDEX: usize, S: Component, Inner> StateRefCell<STATE_INDEX, S, Inner> {
-    fn borrow(&self) -> StateRef<'_, STATE_INDEX, S, Inner> {
-        StateRef {
-            ref_: self.value.borrow(),
-            scope: self.scope.clone(),
-        }
-    }
-    fn borrow_mut(&self) -> StateRefMut<'_, STATE_INDEX, S, Inner> {
-        StateRefMut {
-            ref_mut: self.value.borrow_mut(),
-            scope: self.scope.clone(),
-        }
-    }
-}
-
-struct StateRefMut<'a, const STATE_INDEX: usize, S: Component, Inner> {
-    ref_mut: RefMut<'a, Inner>,
-    scope: Rc<S>,
-}
-
-struct StateRef<'a, const STATE_INDEX: usize, S: Component, Inner> {
-    ref_: Ref<'a, Inner>,
-    scope: Rc<S>,
-}
-
-impl<const STATE_INDEX: usize, S: Component, Inner> Drop for StateRefMut<'_, STATE_INDEX, S, Inner> {
-    fn drop(&mut self) {
-        S::TEMPLATE.get_updater(STATE_INDEX)(self.scope.clone());
-    }
-}
- */
 impl Counter {
     const __STEP: usize = 0;
     const __INITIAL_COUNT: usize = 1;
