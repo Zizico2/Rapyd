@@ -728,7 +728,7 @@ pub fn derived(item: proc_macro::TokenStream) -> proc_macro::TokenStream {
         match dependency {
             Member::Named(dependency) => {
                 let dependency = dependency.to_string();
-                punctuated.push(quote!(#dependency))},
+                punctuated.push(quote!(Self::field_name_to_index(#dependency)))},
             Member::Unnamed(_) => panic!("Scope should have named members"),
         }
     }
