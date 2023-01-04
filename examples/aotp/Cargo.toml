@@ -9,5 +9,6 @@ edition = "2021"
 const-str = "0.5.3"
 rapyd = { path = "../../rapyd" }
 rapyd-macros = { path = "../../rapyd-macros" }
+seq-macro = "0.3.2"
 syn = { version = "1.0.102" }
 web-sys = { version = "0.3.60", features = ["Text"] }

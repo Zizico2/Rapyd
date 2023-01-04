@@ -14,7 +14,7 @@ use syn::{
     visit_mut::VisitMut,
     Attribute, Error, Expr, ExprCall, ExprClosure, ExprLet, ExprMacro, ExprPath, Field, Ident,
     ImplItem, ImplItemMethod, Item, ItemFn, ItemImpl, ItemMacro, ItemMod, ItemStruct, Local, Macro,
-    MacroDelimiter, Member, Meta, Pat, Path, Token,
+    MacroDelimiter, Member, Meta, Pat, PatType, Path, Token,
 };
 use syn_rsx::parse2;
 mod scope_field_attrs;
@@ -707,7 +707,13 @@ pub fn component_test(
 pub fn derived(item: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let mut closure = parse_macro_input!(item as ExprClosure);
     let mut inputs = Punctuated::<Pat, Comma>::new();
-    inputs.push(parse_quote!(__cx));
+    let cx = PatType {
+        attrs: vec![],
+        pat: parse_quote!(__cx),
+        colon_token: Token![:](Span::mixed_site()),
+        ty: parse_quote!(Rc<Self>),
+    };
+    inputs.push(syn::Pat::Type(cx));
     inputs.extend(closure.inputs);
     closure.inputs = inputs;
 
@@ -717,21 +723,10 @@ pub fn derived(item: proc_macro::TokenStream) -> proc_macro::TokenStream {
         context_members: Default::default(),
     };
     visitor.visit_expr_mut(&mut (*body));
-    *closure.body.as_mut() = parse_quote!({
-        let __cx: &Self = __cx;
-        #body
-    });
-    // panic!("{:#?}", visitor.context_members);
+    *closure.body.as_mut() = parse_quote!(#body);
 
-    let mut punctuated = Punctuated::<_, Token![,]>::new();
-    for dependency in visitor.context_members {
-        match dependency {
-            Member::Named(dependency) => {
-                let dependency = dependency.to_string();
-                punctuated.push(quote!(Self::field_name_to_index(#dependency)))},
-            Member::Unnamed(_) => panic!("Scope should have named members"),
-        }
-    }
+    let punctuated = Punctuated::<TokenStream, Token![,]>::new();
+
     quote! {
         __Derived{
             closure: #closure,

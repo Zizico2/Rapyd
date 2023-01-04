@@ -1,231 +1,87 @@
-// Could try and rewrite using the following features. `const fn render` could then be part of a `Render` trait
-// instead of just being implicitly required by the component macro
-// #![feature(return_position_impl_trait_in_trait)]
-// #![feature(const_trait_impl)]
+use std::fmt::Display;
 
-// can use the following features to remove the need to enable lifecycle hooks
-// #![feature(min_specialization)]
-// #![feature(rustc_attrs)]
-#![feature(const_mut_refs)]
-#![feature(const_replace)]
-#![feature(const_maybe_uninit_write)]
-// #![feature(const_option)]
-// #![feature(const_option_ext)]
-//#![feature(stmt_expr_attributes)]
+use component::TextNodeToData;
 
-use std::cell::{Ref, RefMut};
-use std::mem::{self, MaybeUninit};
-use std::rc::Rc;
-// include!("main.rs");
-use std::{cell::RefCell, collections::HashSet, fmt::Display, marker::PhantomData};
-
+mod component;
 mod state;
+//#[component]
+mod number_display {
+    use crate::component::Context as _;
+    use crate::component::TextNodeToData;
+    use std::rc::Rc;
 
-#[rapyd_macros::test_use_attr]
-use rapyd_macros::derived;
-use state::StateRefCell;
-use syn::Ident;
+    use crate::component;
+    use crate::state;
+    use crate::state::StateRefCell;
 
-fn main() {
+    struct Context {
+        //#[prop]
+        initial_count: u32,
+        //#[prop(default)]
+        step: u32,
+        //#[state]
+        count: StateRefCell<
+            { Self::N_TEXT_NODES },
+            state::State<0, { Self::N_TEXT_NODES }, Self>,
+            Context,
+            u32,
+        >,
+        text_nodes: [web_sys::Text; Self::N_TEXT_NODES],
+    }
+    impl component::Context<1> for Context {
+        const N_TEXT_NODES: usize = 1;
+        fn get_text_nodes(&self) -> &[web_sys::Text; Self::N_TEXT_NODES] {
+            &self.text_nodes
+        }
+    }
+
+    // REPEAT FOR EVERY STATE VAR
+    impl state::OnUpdate<{ Context::N_TEXT_NODES }, Context>
+        for state::State<0, { Context::N_TEXT_NODES }, Context>
+    {
+        fn on_update(cx: Rc<Context>) {
+            // REPEAT THIS LINE FOR EVERY TEXT NODE THAT DEPPENDS ON THIS STATE VAR
+            component::update_text_node::<0, { Context::N_TEXT_NODES }, _>(cx);
+
+            // ADD MORE PRESET EFFECTS (lifecycle hooks, maybe more)
+        }
+    }
+
+    // REPEAT FOR EVERY TEXT NODE
+    impl component::TextNodeToData<Context>
+        for component::TextNode<0, { Context::N_TEXT_NODES }, Context>
+    {
+        fn to_data(cx: Rc<Context>) -> String {
+            let val = { cx.multiplied(3) };
+            component::ToData::to_data(&val)
+        }
+    }
+
     /*
-    println!("{}", ComponentWithRender::__TEMPLATE.get(0).unwrap()());
-    println!("{}", ComponentWithRender::__TEMPLATE.get(1).unwrap()());
+    fn init_state(initial_count: u32, step: u32) -> State {
+        State {
+            count: initial_count,
+        }
+    }
+    */
+
+    impl Context {
+        fn multiplied(&self, factor: u32) -> u32 {
+            *self.count.borrow() * factor
+        }
+    }
+
+    /*
+    html! {
+        <div> "I count "{ cx.multiplied(3) }"!" </div>
+    };
     */
 }
 
-const FUNC: &dyn Fn() = &|| {};
-const FUNC_2: fn() -> () = || {};
-fn func_3() {}
-
-trait Lifecycle
-where
-    Self: Sized,
-{
-    fn on_new(self) -> Self {
-        self
-    }
-    fn on_mount(scope: &Self) {}
-    fn on_cleanup(scope: &Self) {}
-}
-pub trait Template<S: Component> {
-    fn get_updater(&self, i: usize) -> fn(self_: Rc<S>) -> &'static str;
-}
-
-impl<S: Component> Template<S> for () {
-    fn get_updater(&self, i: usize) -> fn(self_: Rc<S>) -> &'static str {
-        todo!()
+impl<T: Display> component::ToData for T {
+    fn to_data(&self) -> String {
+        self.to_string()
     }
 }
 
-impl<const T: usize, S: Component> Template<S> for [fn() -> &'static str; T] {
-    fn get_updater(&self, i: usize) -> fn(self_: Rc<S>) -> &'static str {
-        todo!()
-    }
-}
-
-// to enable lifecycle hooks access: #[rapyd_macros::component_test(lifecycle)]
-// GO WITH THE SIMPLES VERSION. just prop(value) or state(value) is gooe enough for now.
-// think of possible alternatives later or stick to this option
-
-//? #[rapyd_macros::component_test]
-pub struct Counter {
-    // #[state]
-    count: StateRefCell<0, Self, u32>,
-}
-
-impl Component for Counter {
-    const TEMPLATE: &'static dyn Template<Counter> = &Self::render();
-}
-
-pub trait Component: /* Sized  + */ 'static {
-    const TEMPLATE: &'static dyn Template<Self>;
-}
-
-impl Counter {
-    const __STEP: usize = 0;
-    const __INITIAL_COUNT: usize = 1;
-    const __COUNT: usize = 2;
-
-    // const __STATE_EFFECTS: [&dyn Fn(&Self) -> (); 3] = [&|_| {}, &|_| {}, &|_| {}];
-    const __STATE_FIELDS: usize = 3;
-
-    const fn field_name_to_index(field_name: &'static str) -> usize {
-        if const_str::equal!(field_name, "step") {
-            Self::__STEP
-        } else if const_str::equal!(field_name, "initial_count") {
-            Self::__INITIAL_COUNT
-        } else if const_str::equal!(field_name, "count") {
-            Self::__COUNT
-        } else {
-            panic!("field not existant")
-        }
-    }
-    //const __TEST: [[(); 1]; 1] = [[()]];
-}
-
-pub struct TextNode {}
-
-impl TextNode {
-    fn update(&self) {}
-}
-
-impl Counter {
-    fn increment_count(&self) {
-        // *self.count.borrow_mut() += 1;
-    }
-    const fn render() -> impl Template<Self> {
-        // let a = #[inline(always)] || {};
-        let multiplied = derived!(|step: u32| *self.count.borrow() * 0);
-        let __multipled_dependency_mapping: [bool; Self::__STATE_FIELDS] = [false, false, true];
-
-        const __N_TEXT_NODES: usize = 1;
-
-        let mut on_state_change: [[bool; __N_TEXT_NODES]; Self::__STATE_FIELDS] =
-            [[false], [false], [false]];
-        /*
-        effect!(|| log!(self.count.into()));
-
-        html!(
-            <button @click={ self.increment_count }>
-                "I count "{ multiplied!(5) }" !";
-            </button>
-        )
-
-        let mut tok = TokenStream::new();
-        for dep in multiplied.dependencies {
-
-        }
-        */
-        on_state_change[0][0] = __multipled_dependency_mapping[0] | on_state_change[0][0];
-        on_state_change[1][0] = __multipled_dependency_mapping[1] | on_state_change[1][0];
-        on_state_change[2][0] = __multipled_dependency_mapping[2] | on_state_change[2][0];
-
-        let on_update = |cx: &Self, updated_state: usize| {
-            let mut n = 0;
-            while n < on_state_change[updated_state].len() {
-                if on_state_change[updated_state][n] {
-                    // cx.text_nodes[n].update();
-                }
-                n += 1;
-            }
-        };
-
-        on_state_change
-    }
-}
-
-impl<const T: usize, const U: usize, S: Component> Template<S> for [[bool; T]; U] {
-    fn get_updater(&self, i: usize) -> fn(self_: Rc<S>) -> &'static str {
-        todo!()
-    }
-}
-
-/*
-#[rapyd_macros::component_test]
-pub struct Counter {
-    #[prop]
-    #[state]
-    count: u32,
-}
-
-impl Counter {
-    fn increment_count(&mut self) {
-        self.count += 1;
-    }
-    const fn render() -> impl Template {
-        let multiplied = derived!(|cx, step: i32| cx.count * step);
-
-        effect!(|cx| log!(cx.count.into()));
-
-        html!(
-            <button @click={ cx.increment_count }>
-                "I count "{ multiplied(cx, 5) }" !";
-            </button>
-        )
-    }
-}
-*/
-
-struct __Derived<const AmountOfDependencies: usize, T> {
-    closure: T,
-    dependencies: [usize; AmountOfDependencies],
-}
-
-impl<const AmountOfDependencies: usize, T> Data for __Derived<AmountOfDependencies, T> {}
-impl<T: Display> Data for T {}
-
-trait Data {}
-
-struct Test {}
-
-struct Props;
-impl Test {
-    fn test() {
-        let a = Some(());
-        let a = |a| {
-            let a: Self = a;
-        };
-    }
-
-    fn h1(&self) {
-        Test::h2(self)
-    }
-
-    fn h2(&self) {}
-}
-
-use syn::__private::Span;
-
-trait TemplateEx {
-    fn update_prop(&self, prop: usize) -> &dyn FnMut() -> ();
-}
-
-struct T {
-    test: [fn() -> ()],
-}
-
-impl TemplateEx for T {
-    fn update_prop(&self, prop: usize) -> &dyn FnMut() -> () {
-        &self.test[0]
-    }
-}
+fn main() {}
