@@ -1,38 +1,52 @@
-use std::{marker::PhantomData, rc::Rc};
+use std::{fmt::Display, marker::PhantomData};
 
-//TODO this should use #![feature(generic_const_exprs)], and not need a generic param
-// for now it requires the user keeps the consts and the generic in sync by themselves
-pub trait Context<const N_TEXT_NODES: usize> {
-    const N_TEXT_NODES: usize;
+pub trait Context {}
+pub trait Scope<const N_TEXT_NODES: usize>: Sized {
+    type Context: self::Context;
+    // This associated const should never be overriden
+    const N_TEXT_NODES: usize = N_TEXT_NODES;
     fn get_text_nodes(&self) -> &[web_sys::Text; N_TEXT_NODES];
+    fn get_context(&self) -> &Self::Context;
+
+    fn update_text_node<const INDEX: usize>(&self)
+    where
+        self::TextNodeBase<INDEX, N_TEXT_NODES, Self>: TextNode<N_TEXT_NODES, Self>,
+    {
+        let text_node = self.get_text_nodes();
+        let new_data =
+            <self::TextNodeBase<INDEX, N_TEXT_NODES, Self>>::get_data(self.get_context());
+
+        let old_data = text_node[INDEX].data();
+
+        if new_data != old_data {
+            text_node[INDEX].set_data(new_data.as_str());
+        }
+    }
 }
 
-pub trait TextNodeToData<Context> {
-    fn to_data(cx: Rc<Context>) -> String;
+// TODO this should use #![feature(generic_const_exprs)], and not need a generic param
+pub trait TextNode<const N_TEXT_NODES: usize, Scope: self::Scope<N_TEXT_NODES>> {
+    fn get_data(cx: &Scope::Context) -> String;
 }
 
 pub trait ToData {
     fn to_data(&self) -> String;
 }
+impl<T: Display> ToData for T {
+    fn to_data(&self) -> String {
+        self.to_string()
+    }
+}
 
-pub struct TextNode<
+pub struct TextNodeBase<
     const INDEX: usize,
     const N_TEXT_NODES: usize,
-    Context: self::Context<N_TEXT_NODES>,
+    Context: self::Scope<N_TEXT_NODES>,
 > {
     _marker: PhantomData<Context>,
 }
 
-pub fn update_text_node<
-    const INDEX: usize,
-    const N_TEXT_NODES: usize,
-    Context: self::Context<N_TEXT_NODES>,
->(
-    cx: Rc<Context>,
-) where
-    self::TextNode<INDEX, N_TEXT_NODES, Context>: self::TextNodeToData<Context>,
-{
-    cx.get_text_nodes()[INDEX].set_data(&<self::TextNode<INDEX, N_TEXT_NODES, Context>>::to_data(
-        cx.clone(),
-    ));
+pub struct ScopeBase<const N_TEXT_NODES: usize, Context: self::Context> {
+    pub cx: Context,
+    pub text_nodes: [web_sys::Text; N_TEXT_NODES],
 }

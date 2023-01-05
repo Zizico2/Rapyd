@@ -8,87 +8,88 @@ use std::{
 use crate::component;
 
 //TODO: this could be improved with array const generics -- [usize]
-pub struct State<
+pub struct StateBase<
     const I: usize,
     const N_TEXT_NODES: usize,
-    Context: component::Context<N_TEXT_NODES>,
+    Scope: component::Scope<N_TEXT_NODES>,
 > {
-    _marker: PhantomData<Context>,
+    _marker: PhantomData<Scope>,
 }
 
-pub trait OnUpdate<const N_TEXT_NODES: usize, Context: component::Context<N_TEXT_NODES>> {
-    fn on_update(context: Rc<Context>);
+pub trait State<const N_TEXT_NODES: usize, Scope: component::Scope<N_TEXT_NODES>> {
+    fn on_update(sc: &Scope);
 }
 
 pub struct StateRefCell<
     const N_TEXT_NODES: usize,
-    StateId: OnUpdate<N_TEXT_NODES, Context>,
-    Context: component::Context<N_TEXT_NODES>,
+    StateId: State<N_TEXT_NODES, Scope>,
+    Scope: component::Scope<N_TEXT_NODES>,
     Inner,
 > {
     __marker: PhantomData<StateId>,
     value: RefCell<Inner>,
-    scope: Rc<Context>,
+    sc: Rc<Scope>,
+}
+
+impl<
+        const N_TEXT_NODES: usize,
+        StateId: State<N_TEXT_NODES, Scope>,
+        Scope: component::Scope<N_TEXT_NODES>,
+        Inner,
+    > StateRefCell<N_TEXT_NODES, StateId, Scope, Inner>
+{
+    /// initializes the struct. doesn't access the values in any way whatsoever
+    pub fn new(inner: Inner, sc: Rc<Scope>) -> Self {
+        Self {
+            __marker: PhantomData,
+            value: RefCell::new(inner),
+            sc,
+        }
+    }
 }
 
 pub struct StateRef<
     'a,
     const N_TEXT_NODES: usize,
-    StateId: OnUpdate<N_TEXT_NODES, Context>,
-    Context: component::Context<N_TEXT_NODES>,
+    StateId: State<N_TEXT_NODES, Scope>,
+    Scope: component::Scope<N_TEXT_NODES>,
     Inner,
 > {
     __marker: PhantomData<StateId>,
     ref_: Ref<'a, Inner>,
-    scope: Rc<Context>,
+    sc: Rc<Scope>,
 }
 pub struct StateRefMut<
     'a,
     const N_TEXT_NODES: usize,
-    StateId: OnUpdate<N_TEXT_NODES, Context>,
-    Context: component::Context<N_TEXT_NODES>,
+    StateId: State<N_TEXT_NODES, Scope>,
+    Scope: component::Scope<N_TEXT_NODES>,
     Inner,
 > {
     __marker: PhantomData<StateId>,
     ref_mut: RefMut<'a, Inner>,
-    scope: Rc<Context>,
+    sc: Rc<Scope>,
 }
 
 impl<
         const N_TEXT_NODES: usize,
-        StateId: OnUpdate<N_TEXT_NODES, Context>,
-        Context: component::Context<N_TEXT_NODES>,
+        StateId: State<N_TEXT_NODES, Scope>,
+        Scope: component::Scope<N_TEXT_NODES>,
         Inner,
-    > StateRefCell<N_TEXT_NODES, StateId, Context, Inner>
+    > StateRefCell<N_TEXT_NODES, StateId, Scope, Inner>
 {
-    pub fn new(value: Inner, scope: Rc<Context>) -> Self {
-        Self {
-            __marker: PhantomData,
-            value: RefCell::new(value),
-            scope,
-        }
-    }
-}
-
-impl<
-        const N_TEXT_NODES: usize,
-        StateId: OnUpdate<N_TEXT_NODES, Context>,
-        Context: component::Context<N_TEXT_NODES>,
-        Inner,
-    > StateRefCell<N_TEXT_NODES, StateId, Context, Inner>
-{
-    pub fn borrow(&self) -> StateRef<'_, N_TEXT_NODES, StateId, Context, Inner> {
+    pub fn borrow(&self) -> StateRef<'_, N_TEXT_NODES, StateId, Scope, Inner> {
         StateRef {
             __marker: PhantomData,
             ref_: self.value.borrow(),
-            scope: self.scope.clone(),
+            sc: self.sc.clone(),
         }
     }
-    pub fn borrow_mut(&self) -> StateRefMut<'_, N_TEXT_NODES, StateId, Context, Inner> {
+    pub fn borrow_mut(&self) -> StateRefMut<'_, N_TEXT_NODES, StateId, Scope, Inner> {
         StateRefMut {
             __marker: PhantomData,
             ref_mut: self.value.borrow_mut(),
-            scope: self.scope.clone(),
+            sc: self.sc.clone(),
         }
     }
 }
@@ -96,10 +97,10 @@ impl<
 impl<
         'a,
         const N_TEXT_NODES: usize,
-        StateId: OnUpdate<N_TEXT_NODES, Context>,
-        Context: component::Context<N_TEXT_NODES>,
+        StateId: State<N_TEXT_NODES, Scope>,
+        Scope: component::Scope<N_TEXT_NODES>,
         Inner,
-    > Deref for StateRef<'a, N_TEXT_NODES, StateId, Context, Inner>
+    > Deref for StateRef<'a, N_TEXT_NODES, StateId, Scope, Inner>
 {
     type Target = Inner;
 
@@ -111,10 +112,10 @@ impl<
 impl<
         'a,
         const N_TEXT_NODES: usize,
-        StateId: OnUpdate<N_TEXT_NODES, Context>,
-        Context: component::Context<N_TEXT_NODES>,
+        StateId: State<N_TEXT_NODES, Scope>,
+        Scope: component::Scope<N_TEXT_NODES>,
         Inner,
-    > Deref for StateRefMut<'a, N_TEXT_NODES, StateId, Context, Inner>
+    > Deref for StateRefMut<'a, N_TEXT_NODES, StateId, Scope, Inner>
 {
     type Target = Inner;
 
@@ -126,10 +127,10 @@ impl<
 impl<
         'a,
         const N_TEXT_NODES: usize,
-        StateId: OnUpdate<N_TEXT_NODES, Context>,
-        Context: component::Context<N_TEXT_NODES>,
+        StateId: State<N_TEXT_NODES, Scope>,
+        Scope: component::Scope<N_TEXT_NODES>,
         Inner,
-    > DerefMut for StateRefMut<'a, N_TEXT_NODES, StateId, Context, Inner>
+    > DerefMut for StateRefMut<'a, N_TEXT_NODES, StateId, Scope, Inner>
 {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.ref_mut.deref_mut()
@@ -138,12 +139,12 @@ impl<
 
 impl<
         const N_TEXT_NODES: usize,
-        StateId: OnUpdate<N_TEXT_NODES, Context>,
-        Context: component::Context<N_TEXT_NODES>,
+        StateId: State<N_TEXT_NODES, Scope>,
+        Scope: component::Scope<N_TEXT_NODES>,
         Inner,
-    > Drop for StateRefMut<'_, N_TEXT_NODES, StateId, Context, Inner>
+    > Drop for StateRefMut<'_, N_TEXT_NODES, StateId, Scope, Inner>
 {
     fn drop(&mut self) {
-        StateId::on_update(self.scope.clone());
+        StateId::on_update(&self.sc);
     }
 }

@@ -12,9 +12,9 @@ use syn::{
     token::Comma,
     visit::Visit,
     visit_mut::VisitMut,
-    Attribute, Error, Expr, ExprCall, ExprClosure, ExprLet, ExprMacro, ExprPath, Field, Ident,
-    ImplItem, ImplItemMethod, Item, ItemFn, ItemImpl, ItemMacro, ItemMod, ItemStruct, Local, Macro,
-    MacroDelimiter, Member, Meta, Pat, PatType, Path, Token,
+    Attribute, Block, Error, Expr, ExprCall, ExprClosure, ExprLet, ExprMacro, ExprPath, Field,
+    Ident, ImplItem, ImplItemMethod, Item, ItemFn, ItemImpl, ItemMacro, ItemMod, ItemStruct,
+    LitInt, Local, Macro, MacroDelimiter, Member, Meta, Pat, PatType, Path, Token, TypeArray, Lit, Stmt,
 };
 use syn_rsx::parse2;
 mod scope_field_attrs;
@@ -765,4 +765,32 @@ impl VisitMut for ComponentVisitorNew {
         self.visit_expr_mut(&mut i.base);
         self.visit_member_mut(&mut i.member);
     }
+}
+
+#[proc_macro_error]
+#[proc_macro]
+pub fn arr(item: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let mut closure = parse_macro_input!(item as ExprClosure);
+    
+
+    let mut ts: Punctuated<Block, Comma> = Punctuated::new();
+
+    let size = closure.inputs.pop().unwrap().into_value();
+    let size: LitInt = parse_quote!(#size);
+    
+    let input_var = closure.inputs.pop().unwrap().into_value();
+    
+    for i in 0_usize..size.base10_parse().unwrap() {
+        let mut block: Block = parse_quote!({});
+        block
+            .stmts
+            .push(parse_quote!(const #input_var: usize = #i;));
+
+        let iife = Stmt::Expr(parse_quote!((#closure)()));
+        block.stmts.push(iife);
+
+        ts.push(block);
+    }
+
+    quote!([#ts]).into()
 }
