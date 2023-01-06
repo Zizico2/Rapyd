@@ -1,25 +1,7 @@
 #![feature(new_uninit)]
 
-mod component;
-mod state;
 //#[component]
 mod number_display {
-    /*
-        use crate::component::Scope as _;
-
-        use crate::component::ScopeBase;
-
-        use crate::component::WithProps;
-        use crate::component::WithTextNode;
-
-        use std::mem::transmute;
-        use std::mem::MaybeUninit;
-        use std::ptr::addr_of_mut;
-        use std::rc::Rc;
-
-        use crate::component;
-        use crate::state;
-    */
     // USER WRITTEN - START
 
     pub struct Context {
@@ -53,7 +35,15 @@ mod number_display {
     // MACRO GERATED - START
 
     // CONTEXT - START
-    impl crate::component::Context<1> for Context {
+    impl
+        ::rapyd::component::Context<
+            1,
+            {
+                use ::rapyd::component::Scope as _;
+                Scope::N_WALKS
+            },
+        > for Context
+    {
         type Scope = Scope;
     }
 
@@ -67,7 +57,7 @@ mod number_display {
         pub initial_count: u32,
         pub step: Option<u32>,
     }
-    impl crate::component::Props for Props {
+    impl ::rapyd::component::Props for Props {
         type ProcessedProps = ProcessedProps;
     }
     /// PROCESSED PROPS
@@ -75,7 +65,7 @@ mod number_display {
         pub initial_count: u32,
         pub step: u32,
     }
-    impl crate::component::ProcessedProps for ProcessedProps {
+    impl ::rapyd::component::ProcessedProps for ProcessedProps {
         type Props = Props;
     }
     impl From<Props> for ProcessedProps {
@@ -90,43 +80,59 @@ mod number_display {
     // CONTEXT - END
 
     // STATE VARS - START
-    type StateRefCell<const INDEX: usize> = crate::state::StateRefCell<
+    type StateRefCell<const INDEX: usize> = ::rapyd::state::StateRefCell<
         {
-            use crate::component::Scope as _;
+            use ::rapyd::component::Scope as _;
             Scope::N_TEXT_NODES
         },
-        crate::state::StateBase<
+        {
+            use ::rapyd::component::Scope as _;
+            Scope::N_WALKS
+        },
+        ::rapyd::state::StateBase<
             INDEX,
             {
-                use crate::component::Scope as _;
+                use ::rapyd::component::Scope as _;
                 Scope::N_TEXT_NODES
+            },
+            {
+                use ::rapyd::component::Scope as _;
+                Scope::N_WALKS
             },
             Scope,
         >,
         Scope,
         u32,
     >;
-    type StateBase<const INDEX: usize> = crate::state::StateBase<
+    type StateBase<const INDEX: usize> = ::rapyd::state::StateBase<
         INDEX,
         {
-            use crate::component::Scope as _;
+            use ::rapyd::component::Scope as _;
             Scope::N_TEXT_NODES
+        },
+        {
+            use ::rapyd::component::Scope as _;
+            Scope::N_WALKS
         },
         Scope,
     >;
     // 1 - START
     impl
-        crate::state::State<
+        ::rapyd::state::State<
             {
-                use crate::component::Scope as _;
+                use ::rapyd::component::Scope as _;
                 Scope::N_TEXT_NODES
+            },
+            {
+                use ::rapyd::component::Scope as _;
+                Scope::N_WALKS
             },
             Scope,
         > for StateBase<0>
     {
         fn on_update(cx: &Scope) {
             // REPEAT THIS LINE FOR EVERY TEXT NODE THAT DEPPENDS ON THIS STATE VAR
-            crate::component::Scope::update_text_node::<0>(cx);
+            ::rapyd::component::Scope::update_text_node::<0>(cx);
             // ADD MORE PRESET EFFECTS (lifecycle hooks, maybe more)
         }
     }
@@ -136,11 +142,15 @@ mod number_display {
     // TEXT NODES - START
     // 1 - START
     impl
-        crate::component::WithTextNode<
+        ::rapyd::component::WithTextNode<
             0,
             {
-                use crate::component::Scope as _;
+                use ::rapyd::component::Scope as _;
                 Scope::N_TEXT_NODES
+            },
+            {
+                use ::rapyd::component::Scope as _;
+                Scope::N_WALKS
             },
         > for Context
     {
@@ -148,7 +158,7 @@ mod number_display {
             let cx = self;
             {
                 let val = { cx.multiplied(3) };
-                crate::component::ToData::to_data(&val)
+                ::rapyd::component::ToData::to_data(&val)
             }
         }
     }
@@ -156,9 +166,46 @@ mod number_display {
     // TEXT NODES - END
 
     // SCOPE - START
-    type Scope = crate::component::ScopeBase<1, Context>;
+    type ScopeBase = ::rapyd::component::ScopeBase<
+        {
+            use ::rapyd::component::Scope as _;
+            Scope::N_TEXT_NODES
+        },
+        {
+            use ::rapyd::component::Scope as _;
+            Scope::N_WALKS
+        },
+        Context,
+        Scope,
+    >;
 
-    impl crate::component::WithProps for Scope {
+    pub struct Scope(ScopeBase);
+
+    impl ::rapyd::component::Scope<1, 5> for Scope {
+        type Context = Context;
+        type Props = Props;
+        const TEMPLATE: &'static str = "<div>I count <!>!</div>";
+        const WALKS: [::rapyd::component::Walk; Self::N_WALKS] = [
+            ::rapyd::component::Walk::In(1),
+            ::rapyd::component::Walk::Event("click"),
+            ::rapyd::component::Walk::Over(1),
+            ::rapyd::component::Walk::Text,
+            ::rapyd::component::Walk::Out(1),
+        ];
+
+        fn get_scope_base(
+            &self,
+        ) -> &rapyd::component::ScopeBase<
+            { ScopeBase::N_TEXT_NODES },
+            { Self::N_WALKS },
+            Self::Context,
+            Self,
+        > {
+            &self.0
+        }
+    }
+
+    impl ::rapyd::component::WithProps for Scope {
         type Props = Props;
 
         // TODO implementation without nightly (#![feature(new_uninit)]) should be possible
@@ -166,7 +213,7 @@ mod number_display {
             let ProcessedProps {
                 initial_count,
                 step,
-            } = crate::component::Props::process(props);
+            } = ::rapyd::component::Props::process(props);
 
             let State { count } = init_state(&initial_count, &step);
 
@@ -196,25 +243,29 @@ mod number_display {
             let context = unsafe { context.assume_init() };
 
             let text_nodes: [web_sys::Text; {
-                use crate::component::Scope as _;
+                use ::rapyd::component::Scope as _;
                 Self::N_TEXT_NODES
             }] = rapyd_macros::arr!(|I, 1| {
-                web_sys::Text::new_with_data(&crate::component::WithTextNode::<
+                web_sys::Text::new_with_data(&::rapyd::component::WithTextNode::<
                     I,
                     {
-                        use crate::component::Scope as _;
+                        use ::rapyd::component::Scope as _;
                         Self::N_TEXT_NODES
+                    },
+                    {
+                        use ::rapyd::component::Scope as _;
+                        Scope::N_WALKS
                     },
                 >::get_text_node_data(&context))
                 .unwrap()
             });
 
             unsafe {
-                ::core::ptr::addr_of_mut!((*scope_ptr).cx).write(context);
+                ::core::ptr::addr_of_mut!((*scope_ptr).0.cx).write(context);
             }
 
             unsafe {
-                ::core::ptr::addr_of_mut!((*scope_ptr).text_nodes).write(text_nodes);
+                ::core::ptr::addr_of_mut!((*scope_ptr).0.text_nodes).write(text_nodes);
             }
 
             unsafe { scope.assume_init() }

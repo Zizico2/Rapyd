@@ -11,19 +11,26 @@ use crate::component;
 pub struct StateBase<
     const I: usize,
     const N_TEXT_NODES: usize,
-    Scope: component::Scope<N_TEXT_NODES>,
+    const N_WALKS: usize,
+    Scope: component::Scope<N_TEXT_NODES, N_WALKS>,
 > {
     _marker: PhantomData<Scope>,
 }
 
-pub trait State<const N_TEXT_NODES: usize, Scope: component::Scope<N_TEXT_NODES>> {
+pub trait State<
+    const N_TEXT_NODES: usize,
+    const N_WALKS: usize,
+    Scope: component::Scope<N_TEXT_NODES, N_WALKS>,
+>
+{
     fn on_update(sc: &Scope);
 }
 
 pub struct StateRefCell<
     const N_TEXT_NODES: usize,
-    StateId: State<N_TEXT_NODES, Scope>,
-    Scope: component::Scope<N_TEXT_NODES>,
+    const N_WALKS: usize,
+    StateId: State<N_TEXT_NODES, N_WALKS, Scope>,
+    Scope: component::Scope<N_TEXT_NODES, N_WALKS>,
     Inner,
 > {
     __marker: PhantomData<StateId>,
@@ -33,10 +40,11 @@ pub struct StateRefCell<
 
 impl<
         const N_TEXT_NODES: usize,
-        StateId: State<N_TEXT_NODES, Scope>,
-        Scope: component::Scope<N_TEXT_NODES>,
+        const N_WALKS: usize,
+        StateId: State<N_TEXT_NODES, N_WALKS, Scope>,
+        Scope: component::Scope<N_TEXT_NODES, N_WALKS>,
         Inner,
-    > StateRefCell<N_TEXT_NODES, StateId, Scope, Inner>
+    > StateRefCell<N_TEXT_NODES, N_WALKS, StateId, Scope, Inner>
 {
     /// initializes the struct. doesn't access the values in any way whatsoever
     pub fn new(inner: Inner, sc: Rc<Scope>) -> Self {
@@ -51,8 +59,9 @@ impl<
 pub struct StateRef<
     'a,
     const N_TEXT_NODES: usize,
-    StateId: State<N_TEXT_NODES, Scope>,
-    Scope: component::Scope<N_TEXT_NODES>,
+    const N_WALKS: usize,
+    StateId: State<N_TEXT_NODES, N_WALKS, Scope>,
+    Scope: component::Scope<N_TEXT_NODES, N_WALKS>,
     Inner,
 > {
     __marker: PhantomData<StateId>,
@@ -62,8 +71,9 @@ pub struct StateRef<
 pub struct StateRefMut<
     'a,
     const N_TEXT_NODES: usize,
-    StateId: State<N_TEXT_NODES, Scope>,
-    Scope: component::Scope<N_TEXT_NODES>,
+    const N_WALKS: usize,
+    StateId: State<N_TEXT_NODES, N_WALKS, Scope>,
+    Scope: component::Scope<N_TEXT_NODES, N_WALKS>,
     Inner,
 > {
     __marker: PhantomData<StateId>,
@@ -73,19 +83,20 @@ pub struct StateRefMut<
 
 impl<
         const N_TEXT_NODES: usize,
-        StateId: State<N_TEXT_NODES, Scope>,
-        Scope: component::Scope<N_TEXT_NODES>,
+        const N_WALKS: usize,
+        StateId: State<N_TEXT_NODES, N_WALKS, Scope>,
+        Scope: component::Scope<N_TEXT_NODES, N_WALKS>,
         Inner,
-    > StateRefCell<N_TEXT_NODES, StateId, Scope, Inner>
+    > StateRefCell<N_TEXT_NODES, N_WALKS, StateId, Scope, Inner>
 {
-    pub fn borrow(&self) -> StateRef<'_, N_TEXT_NODES, StateId, Scope, Inner> {
+    pub fn borrow(&self) -> StateRef<'_, N_TEXT_NODES, N_WALKS, StateId, Scope, Inner> {
         StateRef {
             __marker: PhantomData,
             ref_: self.value.borrow(),
             sc: self.sc.clone(),
         }
     }
-    pub fn borrow_mut(&self) -> StateRefMut<'_, N_TEXT_NODES, StateId, Scope, Inner> {
+    pub fn borrow_mut(&self) -> StateRefMut<'_, N_TEXT_NODES, N_WALKS, StateId, Scope, Inner> {
         StateRefMut {
             __marker: PhantomData,
             ref_mut: self.value.borrow_mut(),
@@ -97,10 +108,11 @@ impl<
 impl<
         'a,
         const N_TEXT_NODES: usize,
-        StateId: State<N_TEXT_NODES, Scope>,
-        Scope: component::Scope<N_TEXT_NODES>,
+        const N_WALKS: usize,
+        StateId: State<N_TEXT_NODES, N_WALKS, Scope>,
+        Scope: component::Scope<N_TEXT_NODES, N_WALKS>,
         Inner,
-    > Deref for StateRef<'a, N_TEXT_NODES, StateId, Scope, Inner>
+    > Deref for StateRef<'a, N_TEXT_NODES, N_WALKS, StateId, Scope, Inner>
 {
     type Target = Inner;
 
@@ -112,10 +124,11 @@ impl<
 impl<
         'a,
         const N_TEXT_NODES: usize,
-        StateId: State<N_TEXT_NODES, Scope>,
-        Scope: component::Scope<N_TEXT_NODES>,
+        const N_WALKS: usize,
+        StateId: State<N_TEXT_NODES, N_WALKS, Scope>,
+        Scope: component::Scope<N_TEXT_NODES, N_WALKS>,
         Inner,
-    > Deref for StateRefMut<'a, N_TEXT_NODES, StateId, Scope, Inner>
+    > Deref for StateRefMut<'a, N_TEXT_NODES, N_WALKS, StateId, Scope, Inner>
 {
     type Target = Inner;
 
@@ -127,10 +140,11 @@ impl<
 impl<
         'a,
         const N_TEXT_NODES: usize,
-        StateId: State<N_TEXT_NODES, Scope>,
-        Scope: component::Scope<N_TEXT_NODES>,
+        const N_WALKS: usize,
+        StateId: State<N_TEXT_NODES, N_WALKS, Scope>,
+        Scope: component::Scope<N_TEXT_NODES, N_WALKS>,
         Inner,
-    > DerefMut for StateRefMut<'a, N_TEXT_NODES, StateId, Scope, Inner>
+    > DerefMut for StateRefMut<'a, N_TEXT_NODES, N_WALKS, StateId, Scope, Inner>
 {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.ref_mut.deref_mut()
@@ -139,10 +153,11 @@ impl<
 
 impl<
         const N_TEXT_NODES: usize,
-        StateId: State<N_TEXT_NODES, Scope>,
-        Scope: component::Scope<N_TEXT_NODES>,
+        const N_WALKS: usize,
+        StateId: State<N_TEXT_NODES, N_WALKS, Scope>,
+        Scope: component::Scope<N_TEXT_NODES, N_WALKS>,
         Inner,
-    > Drop for StateRefMut<'_, N_TEXT_NODES, StateId, Scope, Inner>
+    > Drop for StateRefMut<'_, N_TEXT_NODES, N_WALKS, StateId, Scope, Inner>
 {
     fn drop(&mut self) {
         StateId::on_update(&self.sc);

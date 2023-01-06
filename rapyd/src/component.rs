@@ -1,43 +1,41 @@
 use std::{fmt::Display, rc::Rc};
 
 // TODO this should use #![feature(generic_const_exprs)], and should not need a generic param
-pub trait Context<const N_TEXT_NODES: usize> {
+pub trait Context<const N_TEXT_NODES: usize, const N_WALKS: usize> {
     // This associated const should never be overriden
     const N_TEXT_NODES: usize = N_TEXT_NODES;
 
-    type Scope: self::Scope<N_TEXT_NODES>;
+    type Scope: self::Scope<N_TEXT_NODES, N_WALKS>;
 }
 
-pub trait WithTextNode<const INDEX: usize, const N_TEXT_NODES: usize>:
-    Context<N_TEXT_NODES>
+pub trait WithTextNode<const INDEX: usize, const N_TEXT_NODES: usize, const N_WALKS: usize>:
+    Context<N_TEXT_NODES, N_WALKS>
 {
     fn get_text_node_data(&self) -> String;
 }
 
 // TODO this should use #![feature(generic_const_exprs)], and should not need a generic param
-pub trait Scope<const N_TEXT_NODES: usize>: WithProps {
-    type Context: self::Context<N_TEXT_NODES, Scope = Self>;
+pub trait Scope<const N_TEXT_NODES: usize, const N_WALKS: usize>: WithProps + Sized {
+    type Context: self::Context<N_TEXT_NODES, N_WALKS, Scope = Self>;
     // This associated const should never be overriden
     const N_TEXT_NODES: usize = N_TEXT_NODES;
+
+    const N_WALKS: usize = N_WALKS;
+    const TEMPLATE: &'static str;
+    const WALKS: [Walk; N_WALKS];
 
     //#![feature(associated_type_defaults)]
     type Props;
 
-    fn get_text_nodes(&self) -> &[web_sys::Text; N_TEXT_NODES];
-    fn get_context(&self) -> &Self::Context;
+    // fn get_text_nodes(&self) -> &[web_sys::Text; N_TEXT_NODES];
+    // fn get_context(&self) -> &Self::Context;
+    fn get_scope_base(&self) -> &ScopeBase<N_TEXT_NODES, N_WALKS, Self::Context, Self>;
 
     fn update_text_node<const INDEX: usize>(&self)
     where
-        <Self as Scope<N_TEXT_NODES>>::Context: WithTextNode<INDEX, N_TEXT_NODES>,
+        Self::Context: WithTextNode<INDEX, N_TEXT_NODES, N_WALKS>,
     {
-        let text_node = self.get_text_nodes();
-        let new_data = self.get_context().get_text_node_data();
-
-        let old_data = text_node[INDEX].data();
-
-        if new_data != old_data {
-            text_node[INDEX].set_data(new_data.as_str());
-        }
+        self.get_scope_base().update_text_node();
     }
 }
 
@@ -66,25 +64,42 @@ impl<T: Display> ToData for T {
     }
 }
 
-pub struct ScopeBase<const N_TEXT_NODES: usize, Context: self::Context<N_TEXT_NODES, Scope = Self>>
-{
+pub struct ScopeBase<
+    const N_TEXT_NODES: usize,
+    const N_WALKS: usize,
+    Context: self::Context<N_TEXT_NODES, N_WALKS, Scope = Scope>,
+    Scope: self::Scope<N_TEXT_NODES, N_WALKS, Context = Context>,
+> {
     pub cx: Context,
     pub text_nodes: [web_sys::Text; N_TEXT_NODES],
 }
 
-impl<const N_TEXT_NODES: usize, Context: self::Context<N_TEXT_NODES, Scope = Self>>
-    self::Scope<N_TEXT_NODES> for ScopeBase<N_TEXT_NODES, Context>
-where
-    Self: WithProps,
+impl<
+        const N_TEXT_NODES: usize,
+        const N_WALKS: usize,
+        Context: self::Context<N_TEXT_NODES, N_WALKS, Scope = Scope>,
+        Scope: self::Scope<N_TEXT_NODES, N_WALKS, Context = Context>,
+    > ScopeBase<N_TEXT_NODES, N_WALKS, Context, Scope>
 {
-    type Context = Context;
-    type Props = <Self as WithProps>::Props;
+    pub const N_TEXT_NODES: usize = N_TEXT_NODES;
+    fn update_text_node<const INDEX: usize>(&self)
+    where
+        Context: WithTextNode<INDEX, N_TEXT_NODES, N_WALKS>,
+    {
+        let new_data = self.cx.get_text_node_data();
 
-    fn get_text_nodes(&self) -> &[web_sys::Text; N_TEXT_NODES] {
-        &self.text_nodes
-    }
+        let old_data = self.text_nodes[INDEX].data();
 
-    fn get_context(&self) -> &Self::Context {
-        &self.cx
+        if new_data != old_data {
+            self.text_nodes[INDEX].set_data(new_data.as_str());
+        }
     }
+}
+
+pub enum Walk {
+    In(usize),
+    Out(usize),
+    Over(usize),
+    Text,
+    Event(&'static str),
 }
