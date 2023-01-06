@@ -4,6 +4,8 @@
 mod number_display {
     // USER WRITTEN - START
 
+    use web_sys::Event;
+
     pub struct Context {
         //#[prop]
         initial_count: u32,
@@ -21,6 +23,9 @@ mod number_display {
     impl Context {
         fn multiplied(&self, factor: u32) -> u32 {
             *self.count.borrow() * factor
+        }
+        fn on_click(&self, ev: &Event) {
+            todo!()
         }
     }
 
@@ -41,6 +46,10 @@ mod number_display {
             {
                 use ::rapyd::component::Scope as _;
                 Scope::N_WALKS
+            },
+            {
+                use ::rapyd::component::Scope as _;
+                Scope::N_EVENT_LISTENERS
             },
         > for Context
     {
@@ -89,6 +98,10 @@ mod number_display {
             use ::rapyd::component::Scope as _;
             Scope::N_WALKS
         },
+        {
+            use ::rapyd::component::Scope as _;
+            Scope::N_EVENT_LISTENERS
+        },
         ::rapyd::state::StateBase<
             INDEX,
             {
@@ -98,6 +111,10 @@ mod number_display {
             {
                 use ::rapyd::component::Scope as _;
                 Scope::N_WALKS
+            },
+            {
+                use ::rapyd::component::Scope as _;
+                Scope::N_EVENT_LISTENERS
             },
             Scope,
         >,
@@ -114,6 +131,10 @@ mod number_display {
             use ::rapyd::component::Scope as _;
             Scope::N_WALKS
         },
+        {
+            use ::rapyd::component::Scope as _;
+            Scope::N_EVENT_LISTENERS
+        },
         Scope,
     >;
     // 1 - START
@@ -127,6 +148,10 @@ mod number_display {
                 use ::rapyd::component::Scope as _;
                 Scope::N_WALKS
             },
+            {
+                use ::rapyd::component::Scope as _;
+                Scope::N_EVENT_LISTENERS
+            },
             Scope,
         > for StateBase<0>
     {
@@ -138,6 +163,38 @@ mod number_display {
     }
     // 1 - END
     // STATE VARS - END
+
+    // EVENT HANDLERS - START
+    // 1 - START
+    impl
+        ::rapyd::component::WithEventHandler<
+            0,
+            {
+                use ::rapyd::component::Scope as _;
+                Scope::N_TEXT_NODES
+            },
+            {
+                use ::rapyd::component::Scope as _;
+                Scope::N_WALKS
+            },
+            {
+                use ::rapyd::component::Scope as _;
+                Scope::N_EVENT_LISTENERS
+            },
+        > for Context
+    {
+        fn get_event_handler(
+            scope: ::std::rc::Rc<Self::Scope>,
+        ) -> wasm_bindgen::closure::Closure<dyn Fn(&web_sys::Event)> {
+            use rapyd::component::Scope;
+            let scope = scope.clone();
+            wasm_bindgen::closure::Closure::wrap(Box::new(move |ev| {
+                scope.clone().get_scope_base().cx.on_click(ev)
+            }))
+        }
+    }
+    // 1 - END
+    // EVENT HANDLERS - END
 
     // TEXT NODES - START
     // 1 - START
@@ -151,6 +208,10 @@ mod number_display {
             {
                 use ::rapyd::component::Scope as _;
                 Scope::N_WALKS
+            },
+            {
+                use ::rapyd::component::Scope as _;
+                Scope::N_EVENT_LISTENERS
             },
         > for Context
     {
@@ -175,29 +236,35 @@ mod number_display {
             use ::rapyd::component::Scope as _;
             Scope::N_WALKS
         },
+        {
+            use ::rapyd::component::Scope as _;
+            Scope::N_EVENT_LISTENERS
+        },
         Context,
         Scope,
     >;
 
     pub struct Scope(ScopeBase);
 
-    impl ::rapyd::component::Scope<1, 5> for Scope {
+    impl ::rapyd::component::Scope<1, 5, 1> for Scope {
         type Context = Context;
         type Props = Props;
         const TEMPLATE: &'static str = "<div>I count <!>!</div>";
         const WALKS: [::rapyd::component::Walk; Self::N_WALKS] = [
             ::rapyd::component::Walk::In(1),
             ::rapyd::component::Walk::Event("click"),
-            ::rapyd::component::Walk::Over(1),
+            ::rapyd::component::Walk::Over(2),
             ::rapyd::component::Walk::Text,
+            //::rapyd::component::Walk::Over(1),
             ::rapyd::component::Walk::Out(1),
         ];
 
         fn get_scope_base(
             &self,
         ) -> &rapyd::component::ScopeBase<
-            { ScopeBase::N_TEXT_NODES },
+            { Self::N_TEXT_NODES },
             { Self::N_WALKS },
+            { Self::N_EVENT_LISTENERS },
             Self::Context,
             Self,
         > {
@@ -231,9 +298,9 @@ mod number_display {
             let scope_ptr: *mut Scope = ::std::rc::Rc::get_mut(&mut scope).unwrap().as_mut_ptr();
 
             let count: StateRefCell<0> = {
-                let context = scope.clone();
-                let context = unsafe { ::std::mem::transmute(context) };
-                StateRefCell::new(count, context)
+                let scope = scope.clone();
+                let scope = unsafe { ::std::mem::transmute(scope) };
+                StateRefCell::new(count, scope)
             };
 
             unsafe {
@@ -254,7 +321,11 @@ mod number_display {
                     },
                     {
                         use ::rapyd::component::Scope as _;
-                        Scope::N_WALKS
+                        Self::N_WALKS
+                    },
+                    {
+                        use ::rapyd::component::Scope as _;
+                        Self::N_EVENT_LISTENERS
                     },
                 >::get_text_node_data(&context))
                 .unwrap()
@@ -266,6 +337,20 @@ mod number_display {
 
             unsafe {
                 ::core::ptr::addr_of_mut!((*scope_ptr).0.text_nodes).write(text_nodes);
+            }
+
+            let event_handlers: [::wasm_bindgen::prelude::Closure<dyn Fn(&web_sys::Event)>; 1] = {
+                use rapyd::component::Scope as _;
+
+                rapyd_macros::arr!(|I, 1| {
+                    let scope = scope.clone();
+                    let scope: ::std::rc::Rc<Scope> = unsafe { ::std::mem::transmute(scope) };
+                    scope.get_event_handler::<I>()
+                })
+            };
+
+            unsafe {
+                ::core::ptr::addr_of_mut!((*scope_ptr).0.event_handlers).write(event_handlers);
             }
 
             unsafe { scope.assume_init() }
