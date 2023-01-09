@@ -1,9 +1,10 @@
 #![feature(new_uninit)]
+use rapyd::component::{Scope, WithProps};
 
 //#[component]
 mod number_display {
-    // USER WRITTEN - START
 
+    // USER WRITTEN - START
     use web_sys::Event;
 
     pub struct Context {
@@ -15,23 +16,33 @@ mod number_display {
         count: StateRefCell<0>,
     }
 
-    fn init_state(initial_count: &u32, step: &u32) -> State {
+    fn init_state(initial_count: &u32, _step: &u32) -> State {
         State {
             count: *initial_count,
         }
     }
     impl Context {
-        fn multiplied(&self, factor: u32) -> u32 {
+        fn _multiplied(&self, factor: u32) -> u32 {
             *self.count.borrow() * factor
         }
-        fn on_click(&self, ev: &Event) {
-            todo!()
+
+        fn increment_counter(&self, _: &Event) {
+            *self.count.borrow_mut() += self.step;
         }
     }
 
     /*
+    const TEMPLATE: &'static str = "<button>I count <!>!</button>";
+    const WALKS: [::rapyd::component::Walk; Self::N_WALKS] = [
+        ::rapyd::component::Walk::Event("click"),
+        ::rapyd::component::Walk::In(1),
+        ::rapyd::component::Walk::Over(2),
+        ::rapyd::component::Walk::Text,
+        ::rapyd::component::Walk::Over(1),
+        ::rapyd::component::Walk::Out(1),
+    ];
     html! {
-        <div> "I count "{ cx.multiplied(3) }"!" </div>
+        <div> "I count "{ cx.count }"!" </div>
     };
     */
 
@@ -42,7 +53,10 @@ mod number_display {
     // CONTEXT - START
     impl
         ::rapyd::component::Context<
-            1,
+            {
+                use ::rapyd::component::Scope as _;
+                Scope::N_TEXT_NODES
+            },
             {
                 use ::rapyd::component::Scope as _;
                 Scope::N_WALKS
@@ -165,7 +179,7 @@ mod number_display {
     // STATE VARS - END
 
     // EVENT HANDLERS - START
-    // 1 - START
+    // 0 - START
     impl
         ::rapyd::component::WithEventHandler<
             0,
@@ -189,7 +203,36 @@ mod number_display {
             use rapyd::component::Scope;
             let scope = scope.clone();
             wasm_bindgen::closure::Closure::wrap(Box::new(move |ev| {
-                scope.clone().get_scope_base().cx.on_click(ev)
+                scope.get_scope_base().cx.increment_counter(ev);
+            }))
+        }
+    }
+    // 0 - END
+    // 1 - START
+    impl
+        ::rapyd::component::WithEventHandler<
+            1,
+            {
+                use ::rapyd::component::Scope as _;
+                Scope::N_TEXT_NODES
+            },
+            {
+                use ::rapyd::component::Scope as _;
+                Scope::N_WALKS
+            },
+            {
+                use ::rapyd::component::Scope as _;
+                Scope::N_EVENT_LISTENERS
+            },
+        > for Context
+    {
+        fn get_event_handler(
+            scope: ::std::rc::Rc<Self::Scope>,
+        ) -> wasm_bindgen::closure::Closure<dyn Fn(&web_sys::Event)> {
+            use rapyd::component::Scope;
+            let scope = scope.clone();
+            wasm_bindgen::closure::Closure::wrap(Box::new(move |ev| {
+                scope.get_scope_base().cx.increment_counter(ev);
             }))
         }
     }
@@ -197,7 +240,7 @@ mod number_display {
     // EVENT HANDLERS - END
 
     // TEXT NODES - START
-    // 1 - START
+    // 0 - START
     impl
         ::rapyd::component::WithTextNode<
             0,
@@ -217,10 +260,39 @@ mod number_display {
     {
         fn get_text_node_data(&self) -> String {
             let cx = self;
+
+            ::rapyd::component::ToData::to_data({
+                /*{ cx.multiplied(self.step) }*/
+                &cx.count
+            })
+        }
+    }
+    // 0 - END
+    // 1 - START
+    impl
+        ::rapyd::component::WithTextNode<
+            1,
             {
-                let val = { cx.multiplied(3) };
-                ::rapyd::component::ToData::to_data(&val)
-            }
+                use ::rapyd::component::Scope as _;
+                Scope::N_TEXT_NODES
+            },
+            {
+                use ::rapyd::component::Scope as _;
+                Scope::N_WALKS
+            },
+            {
+                use ::rapyd::component::Scope as _;
+                Scope::N_EVENT_LISTENERS
+            },
+        > for Context
+    {
+        fn get_text_node_data(&self) -> String {
+            let cx = self;
+
+            ::rapyd::component::ToData::to_data({
+                /*{ cx.multiplied(self.step) }*/
+                &cx.count
+            })
         }
     }
     // 1 - END
@@ -246,18 +318,16 @@ mod number_display {
 
     pub struct Scope(ScopeBase);
 
-    impl ::rapyd::component::Scope<1, 5, 1> for Scope {
+    impl ::rapyd::component::Scope<2, 11, 2> for Scope {
         type Context = Context;
         type Props = Props;
-        const TEMPLATE: &'static str = "<div>I count <!>!</div>";
-        const WALKS: [::rapyd::component::Walk; Self::N_WALKS] = [
-            ::rapyd::component::Walk::In(1),
-            ::rapyd::component::Walk::Event("click"),
-            ::rapyd::component::Walk::Over(2),
-            ::rapyd::component::Walk::Text,
-            //::rapyd::component::Walk::Over(1),
-            ::rapyd::component::Walk::Out(1),
-        ];
+
+        const TEMPLATE: &'static str =
+            "<div><button>I count <!> clicks</button><button>I count <!> clicks</button></div>";
+
+        rapyd_macros::html_iter! {
+            <div><button>"I count "{ cx.count }" clicks"</button><button>"I count "{ cx.count }" clicks"</button></div>
+        }
 
         fn get_scope_base(
             &self,
@@ -289,6 +359,7 @@ mod number_display {
             unsafe {
                 ::core::ptr::addr_of_mut!((*context_ptr).initial_count).write(initial_count);
             }
+
             unsafe {
                 ::core::ptr::addr_of_mut!((*context_ptr).step).write(step);
             }
@@ -312,7 +383,7 @@ mod number_display {
             let text_nodes: [web_sys::Text; {
                 use ::rapyd::component::Scope as _;
                 Self::N_TEXT_NODES
-            }] = rapyd_macros::arr!(|I, 1| {
+            }] = util_macros::arr!(|I, 2| {
                 web_sys::Text::new_with_data(&::rapyd::component::WithTextNode::<
                     I,
                     {
@@ -338,13 +409,12 @@ mod number_display {
             unsafe {
                 ::core::ptr::addr_of_mut!((*scope_ptr).0.text_nodes).write(text_nodes);
             }
-
-            let event_handlers: [::wasm_bindgen::prelude::Closure<dyn Fn(&web_sys::Event)>; 1] = {
+            let event_handlers: [::wasm_bindgen::prelude::Closure<dyn Fn(&web_sys::Event)>; 2] = {
                 use rapyd::component::Scope as _;
 
-                rapyd_macros::arr!(|I, 1| {
+                let scope: &::std::rc::Rc<Scope> = unsafe { ::std::mem::transmute(&scope) };
+                util_macros::arr!(|I, 2| {
                     let scope = scope.clone();
-                    let scope: ::std::rc::Rc<Scope> = unsafe { ::std::mem::transmute(scope) };
                     scope.get_event_handler::<I>()
                 })
             };
@@ -361,5 +431,14 @@ mod number_display {
 }
 
 fn main() {
-    //let test: [usize; 4] = arr!(|I, 4| I);
+    let app = gloo_utils::document()
+        .query_selector("#app")
+        .unwrap()
+        .unwrap();
+
+    number_display::Scope::new(number_display::Props {
+        initial_count: 0,
+        step: Some(1),
+    })
+    .render(&app);
 }

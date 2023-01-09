@@ -1,11 +1,7 @@
-use gloo::{
-    events::{EventListener, EventListenerOptions},
-    timers::callback::Timeout,
-};
+use gloo::console::debug;
 use std::{fmt::Display, rc::Rc};
 use wasm_bindgen::{prelude::Closure, JsCast};
-use web_sys::Event;
-use web_sys::{Comment, HtmlBodyElement, HtmlElement, HtmlTemplateElement, Node, Window};
+use web_sys::{Comment, HtmlTemplateElement, Node};
 
 // TODO this should use #![feature(generic_const_exprs)], and should not need a generic param
 pub trait Context<const N_TEXT_NODES: usize, const N_WALKS: usize, const N_EVENT_LISTENERS: usize> {
@@ -48,7 +44,7 @@ pub trait Scope<const N_TEXT_NODES: usize, const N_WALKS: usize, const N_EVENT_L
     const TEMPLATE: &'static str;
     const WALKS: [Walk; N_WALKS];
 
-    fn mount(&self) -> web_sys::DocumentFragment {
+    fn render(&self, root: &Node) {
         let document = gloo_utils::document();
 
         let template: HtmlTemplateElement = document
@@ -59,14 +55,12 @@ pub trait Scope<const N_TEXT_NODES: usize, const N_WALKS: usize, const N_EVENT_L
         template.set_inner_html(Self::TEMPLATE);
 
         let template = template.content();
-
         let node: Option<Node> = template.first_child();
+
         let scope_base = self.get_scope_base();
 
         let mut text_nodes = scope_base.text_nodes.iter();
 
-        // TODO could be iter() instead of into_iter(). Performance could be better? could benchmark, eventually
-        // let mut walks = Self::WALKS.into_iter().peekable();
         if let Some(mut node) = node {
             for walk in Self::WALKS {
                 match walk {
@@ -83,7 +77,7 @@ pub trait Scope<const N_TEXT_NODES: usize, const N_WALKS: usize, const N_EVENT_L
                         for _ in 0..n {
                             node = node
                                 .parent_node()
-                                .expect("TEMPLATE and WALKS are not compatible!")
+                                .expect("TEMPLATE and WALKS are not compatible!");
                         }
                     }
                     Walk::Over(n) => {
@@ -94,31 +88,34 @@ pub trait Scope<const N_TEXT_NODES: usize, const N_WALKS: usize, const N_EVENT_L
                                 .expect("TEMPLATE and WALKS are not compatible!")
                         }
                     }
-                    Walk::Text => {
-                        let node: &Comment = node.unchecked_ref();
+                    Walk::Replace => {
+                        debug!("Walk::Text node type assertion starting!");
+                        debug_assert_eq!(node.node_type(), 8);
+                        debug!("passed");
+                        let comment_to_replace: &Comment = node.unchecked_ref();
                         let text_node = text_nodes
                             .next()
                             .expect("TEMPLATE and WALKS are not compatible!");
 
                         let arr = js_sys::Array::of1(text_node);
-                        node.replace_with_with_node(&arr).expect("This should be a logic bug! Maybe Self::TEMPLATE and Self::WALKS aren't compatible,
+                        comment_to_replace.replace_with_with_node(&arr).expect("This should be a logic bug! Maybe Self::TEMPLATE and Self::WALKS aren't compatible,
                                                                             maybe self.text_nodes got initialized wrong, or maybe it's something else c:");
+                        node = text_node.clone().into();
                     }
 
                     Walk::Event(event_type) => {
-                        // TODO: think over EventListenerOptions and `.forget()`
-                        EventListener::new_with_options(
-                            &node,
+                        node.add_event_listener_with_callback(
                             event_type,
-                            EventListenerOptions::default(),
-                            |ev| {},
+                            &self.get_scope_base().event_handlers[0]
+                                .as_ref()
+                                .unchecked_ref(),
                         )
-                        .forget();
+                        .expect("IDK why this fails, but it should be a logic bug!");
                     }
                 }
             }
         }
-        todo!()
+        root.append_child(&template).unwrap();
     }
 
     //#![feature(associated_type_defaults)]
@@ -205,7 +202,6 @@ impl<
         let new_data = self.cx.get_text_node_data();
 
         let old_data = self.text_nodes[INDEX].data();
-
         if new_data != old_data {
             self.text_nodes[INDEX].set_data(new_data.as_str());
         }
@@ -215,14 +211,252 @@ impl<
     where
         Context: WithEventHandler<INDEX, N_TEXT_NODES, N_WALKS, N_EVENT_LISTENERS>,
     {
-        scope.get_event_handler()
+        Context::get_event_handler(scope)
     }
 }
 
+#[derive(Debug, Copy, Clone)]
 pub enum Walk {
     In(usize),
     Out(usize),
     Over(usize),
-    Text,
+    Replace,
     Event(&'static str),
+}
+
+impl Walk {
+    // pub fn can_combine() -> bool
+
+    pub fn combine(optional_one: &mut Option<Self>, another: Self) -> Result<(), ()> {
+        match another {
+            Walk::In(n) => Self::combine_in(optional_one, n),
+            Walk::Out(n) => Self::combine_out(optional_one, n),
+            Walk::Over(n) => Self::combine_over(optional_one, n),
+            Walk::Replace => Self::combine_replace(optional_one),
+            Walk::Event(event_type) => Self::combine_event(optional_one, event_type),
+        }
+    }
+
+    pub fn combine_event(
+        optional_one: &mut Option<Self>,
+        event_type: &'static str,
+    ) -> Result<(), ()> {
+        match optional_one {
+            Some(_) => Err(()),
+            None => {
+                *optional_one = Some(Walk::Event(event_type));
+                Ok(())
+            }
+        }
+    }
+    pub fn combine_replace(optional_one: &mut Option<Self>) -> Result<(), ()> {
+        match optional_one {
+            Some(_) => Err(()),
+            None => {
+                *optional_one = Some(Walk::Replace);
+                Ok(())
+            }
+        }
+    }
+
+    pub fn combine_over(optional_one: &mut Option<Self>, over_n: usize) -> Result<(), ()> {
+        debug_assert_ne!(over_n, 0);
+        match optional_one {
+            Some(one) => match one {
+                Walk::In(n) => {
+                    debug_assert_ne!(*n, 0);
+                    Err(())
+                }
+                Walk::Out(n) => {
+                    debug_assert_ne!(*n, 0);
+                    Err(())
+                }
+                Walk::Over(last_n) => {
+                    debug_assert_ne!(*last_n, 0);
+                    *last_n += over_n;
+                    Ok(())
+                }
+                Walk::Replace => Err(()),
+                Walk::Event(_) => Err(()),
+            },
+            None => {
+                *optional_one = Some(Walk::Over(over_n));
+                Ok(())
+            }
+        }
+    }
+
+    pub fn combine_out(optional_one: &mut Option<Self>, out_n: usize) -> Result<(), ()> {
+        debug_assert_ne!(out_n, 0);
+        match optional_one {
+            Some(one) => match one {
+                Walk::In(n) => {
+                    debug_assert_ne!(*n, 0);
+                    if *n > out_n {
+                        *n -= out_n;
+                    } else if out_n > *n {
+                        let n = out_n - *n;
+                        *one = Walk::Out(n);
+                    } else {
+                        *optional_one = None;
+                    }
+                    Ok(())
+                }
+                Walk::Out(n) => {
+                    debug_assert_ne!(*n, 0);
+                    *n += 1;
+                    Ok(())
+                }
+                Walk::Over(n) => {
+                    debug_assert_ne!(*n, 0);
+                    *optional_one = Some(Walk::Out(out_n));
+                    Ok(())
+                }
+                Walk::Replace => Err(()),
+                Walk::Event(_) => Err(()),
+            },
+            None => {
+                *optional_one = Some(Walk::Out(out_n));
+                Ok(())
+            }
+        }
+    }
+
+    pub fn combine_in(optional_one: &mut Option<Self>, in_n: usize) -> Result<(), ()> {
+        debug_assert_ne!(in_n, 0);
+        match optional_one {
+            Some(one) => match one {
+                Walk::In(n) => {
+                    debug_assert_ne!(*n, 0);
+                    *n += 1;
+                    Ok(())
+                }
+                Walk::Out(n) => {
+                    debug_assert_ne!(*n, 0);
+                    if *n > in_n {
+                        *n -= in_n;
+                    } else if in_n > *n {
+                        let n = in_n - *n;
+                        *one = Walk::In(n);
+                    } else {
+                        *optional_one = None;
+                    }
+                    Ok(())
+                }
+                Walk::Over(n) => {
+                    debug_assert_ne!(*n, 0);
+                    Err(())
+                }
+                Walk::Replace => Err(()),
+                Walk::Event(_) => Err(()),
+            },
+            None => {
+                *optional_one = Some(Walk::In(in_n));
+                Ok(())
+            }
+        }
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct WalkIterator {
+    walks: Vec<Walk>,
+}
+
+impl WalkIterator {
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+impl From<WalkIterator> for Vec<Walk> {
+    fn from(value: WalkIterator) -> Self {
+        value.walks
+    }
+}
+
+impl WalkIterator {
+    pub fn push_replace(&mut self) {
+        self.walks.push(Walk::Replace);
+    }
+
+    pub fn push_over(&mut self, over_n: usize) {
+        debug_assert_ne!(over_n, 0);
+        match self.walks.last_mut() {
+            Some(walk) => match walk {
+                Walk::In(_) => self.walks.push(Walk::Over(over_n)),
+                Walk::Out(_) => self.walks.push(Walk::Over(over_n)),
+                Walk::Over(last_n) => {
+                    debug_assert_ne!(*last_n, 0);
+                    *last_n += over_n;
+                }
+                Walk::Replace => self.walks.push(Walk::Over(over_n)),
+                Walk::Event(_) => self.walks.push(Walk::Over(over_n)),
+            },
+            None => self.walks.push(Walk::Over(over_n)),
+        }
+    }
+
+    pub fn push_out(&mut self, out_n: usize) {
+        debug_assert_ne!(out_n, 0);
+        match self.walks.last_mut() {
+            Some(walk) => match walk {
+                Walk::In(n) => {
+                    debug_assert_ne!(*n, 0);
+                    if *n > out_n {
+                        *n -= out_n;
+                    } else if out_n > *n {
+                        let n = out_n - *n;
+                        self.walks.pop();
+                        self.push_out(n);
+                    } else {
+                        self.walks.pop();
+                    }
+                }
+                Walk::Out(n) => {
+                    debug_assert_ne!(*n, 0);
+                    *n += out_n;
+                }
+                Walk::Over(n) => {
+                    debug_assert_ne!(*n, 0);
+                    self.walks.pop();
+                    self.push_out(out_n);
+                }
+                Walk::Replace => self.walks.push(Walk::Out(out_n)),
+                Walk::Event(_) => self.walks.push(Walk::Out(out_n)),
+            },
+            None => self.walks.push(Walk::Out(out_n)),
+        }
+    }
+
+    pub fn push_in(&mut self, in_n: usize) {
+        debug_assert_ne!(in_n, 0);
+        match self.walks.last_mut() {
+            Some(walk) => match walk {
+                Walk::In(n) => {
+                    debug_assert_ne!(*n, 0);
+                    *n += 1;
+                }
+                Walk::Out(n) => {
+                    debug_assert_ne!(*n, 0);
+                    if *n > in_n {
+                        *n -= in_n;
+                    } else if in_n > *n {
+                        let n = in_n - *n;
+                        self.walks.pop();
+                        self.push_in(n);
+                    } else {
+                        self.walks.pop();
+                    }
+                }
+                Walk::Over(n) => {
+                    debug_assert_ne!(*n, 0);
+                    self.walks.push(Walk::In(in_n))
+                }
+                Walk::Replace => self.walks.push(Walk::In(in_n)),
+                Walk::Event(_) => self.walks.push(Walk::In(in_n)),
+            },
+            None => self.walks.push(Walk::In(in_n)),
+        }
+    }
 }

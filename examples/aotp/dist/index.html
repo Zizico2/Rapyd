@@ -1,0 +1,39 @@
+<!DOCTYPE html><html><head>
+    <!-- 
+    <link data-trunk rel="scss" href="path/to/index.scss" />
+    -->
+  
+<link rel="preload" href="/aotp-81b8ea158c55183a_bg.wasm" as="fetch" type="application/wasm" crossorigin="">
+<link rel="modulepreload" href="/aotp-81b8ea158c55183a.js"></head>
+  <body>
+    <div id="app"></div>
+  
+
+<script type="module">import init from '/aotp-81b8ea158c55183a.js';init('/aotp-81b8ea158c55183a_bg.wasm');</script><script>(function () {
+    var protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    var url = protocol + '//' + window.location.host + '/_trunk/ws';
+    var poll_interval = 5000;
+    var reload_upon_connect = () => {
+        window.setTimeout(
+            () => {
+                // when we successfully reconnect, we'll force a
+                // reload (since we presumably lost connection to
+                // trunk due to it being killed, so it will have
+                // rebuilt on restart)
+                var ws = new WebSocket(url);
+                ws.onopen = () => window.location.reload();
+                ws.onclose = reload_upon_connect;
+            },
+            poll_interval);
+    };
+
+    var ws = new WebSocket(url);
+    ws.onmessage = (ev) => {
+        const msg = JSON.parse(ev.data);
+        if (msg.reload) {
+            window.location.reload();
+        }
+    };
+    ws.onclose = reload_upon_connect;
+})()
+</script></body></html>

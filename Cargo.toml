@@ -2,6 +2,7 @@
 members = [
     "rapyd",
     "rapyd-macros",
+    "util-macros",
     "examples/aotp"
 ]
 
