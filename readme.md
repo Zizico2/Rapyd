@@ -1,5 +1,7 @@
 # Rapyd
 
+Attempt at a rust web framework with compile time defined reactivity (no runtime signals, no VDOM).
+
 ## Misc
 
 ### Useful Crates
